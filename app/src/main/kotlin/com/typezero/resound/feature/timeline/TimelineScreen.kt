@@ -185,7 +185,7 @@ fun TimelineScreen(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (t: Exception) {
+            } catch (t: Throwable) {
                 status = "Mix failed: ${t.message}"
             } finally {
                 owned.forEach { it.delete() }

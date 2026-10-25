@@ -28,6 +28,7 @@ class AndroidRecorder(private val context: Context) : Recorder {
         private set
 
     override fun start(outputPath: String) {
+        check(!isRecording && recorder == null) { "Recording is already active" }
         val file = File(outputPath)
         @Suppress("DEPRECATION")
         val r = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -35,31 +36,42 @@ class AndroidRecorder(private val context: Context) : Recorder {
         } else {
             MediaRecorder()
         }
-        r.setAudioSource(MediaRecorder.AudioSource.MIC)
-        r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-        r.setAudioEncodingBitRate(128_000)
-        r.setAudioSamplingRate(44_100)
-        r.setOutputFile(file.absolutePath)
-        r.prepare()
-        r.start()
-        recorder = r
-        outputFile = file
-        isRecording = true
+        try {
+            r.setAudioSource(MediaRecorder.AudioSource.MIC)
+            r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            r.setAudioEncodingBitRate(128_000)
+            r.setAudioSamplingRate(44_100)
+            r.setOutputFile(file.absolutePath)
+            r.prepare()
+            r.start()
+            recorder = r
+            outputFile = file
+            isRecording = true
+        } catch (failure: Throwable) {
+            try { r.release() } catch (_: Throwable) { }
+            file.delete()
+            throw failure
+        }
     }
 
     override fun stop(): String? {
-        return try {
-            recorder?.apply {
-                stop()
-                release()
-            }
-            outputFile?.absolutePath
-        } catch (t: Throwable) {
-            null
+        val r = recorder ?: return null
+        val file = outputFile
+        var success = false
+        try {
+            r.stop()
+            success = true
+            return file?.absolutePath
+        } catch (_: RuntimeException) {
+            return null
         } finally {
-            recorder = null
-            isRecording = false
+            try { r.release() } finally {
+                recorder = null
+                outputFile = null
+                isRecording = false
+                if (!success) file?.delete()
+            }
         }
     }
 }

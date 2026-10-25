@@ -175,9 +175,16 @@ fun EditScreen(
     DisposableEffect(Unit) {
         onDispose {
             player.release()
-            // Do not delete an in-progress capture here; Recorder lifecycle
-            // shutdown is a separate follow-up requiring synchronization.
-            if (!latestRecording) latestRecordFile?.delete()
+            // The Editor owns its recording. Leaving this screen must not
+            // leave a microphone capture running without visible controls.
+            if (latestRecording || recorder.isRecording) {
+                try {
+                    recorder.stop()?.let { File(it).delete() }
+                } catch (_: Throwable) {
+                    // Recorder.stop is expected to release even on failure.
+                }
+            }
+            latestRecordFile?.delete()
         }
     }
 
@@ -255,7 +262,7 @@ fun EditScreen(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (t: Exception) {
+            } catch (t: Throwable) {
                 status = "$label failed: ${t.message}"
             } finally {
                 owned.forEach { it.delete() }
@@ -292,7 +299,7 @@ fun EditScreen(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (t: Exception) {
+            } catch (t: Throwable) {
                 status = "$label failed: ${t.message}"
             } finally {
                 owned.forEach { it.delete() }
@@ -334,13 +341,15 @@ fun EditScreen(
     }
 
     fun startRecording() {
+        var temp: File? = null
         try {
-            val f = Outputs.newTempFile(context, "recording", "m4a")
-            recorder.start(f.absolutePath)
+            temp = Outputs.newTempFile(context, "recording", "m4a")
+            recorder.start(temp.absolutePath)
             recordElapsed = 0L
             recording = true
             status = "Recording…"
         } catch (t: Throwable) {
+            temp?.delete()
             recording = false
             status = "Record failed: ${t.message}"
         }
@@ -436,7 +445,7 @@ fun EditScreen(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (t: Exception) {
+            } catch (t: Throwable) {
                 status = "Ringtone failed: ${t.message}"
             } finally {
                 src?.delete()

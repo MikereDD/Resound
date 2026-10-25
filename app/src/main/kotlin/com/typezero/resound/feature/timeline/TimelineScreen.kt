@@ -86,7 +86,9 @@ import com.typezero.resound.ui.theme.SignalDeep
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
 import com.typezero.resound.ui.theme.TimecodeStyle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -151,6 +153,7 @@ fun TimelineScreen(
 
     fun exportMix() {
         scope.launch {
+            val owned = mutableListOf<File>()
             try {
                 busy = true
                 status = "Mixing tracks…"
@@ -163,7 +166,8 @@ fun TimelineScreen(
                 }
                 val inputs = active.map { (track, clip) ->
                     Effects.TimelineInput(
-                        path = AudioFiles.resolveToCache(context, clip.source).absolutePath,
+                        path = AudioFiles.resolveToCache(context, clip.source)
+                            .also { owned += it }.absolutePath,
                         startMs = clip.startMs,
                         inMs = clip.sourceInMs,
                         outMs = clip.sourceOutMs,
@@ -171,16 +175,20 @@ fun TimelineScreen(
                     )
                 }
                 val temp = Outputs.newTempFile(context, "mix", "m4a")
+                    .also { owned += it }
                 val result = ffmpeg.run(Effects.mixTimeline(inputs, temp.absolutePath))
                 status = if (result.isSuccess) {
-                    val published = Outputs.publishToMusic(context, temp, temp.name, "m4a")
+                    val published = Outputs.publishToMusic(context, temp, Outputs.exportName("mix", "m4a"), "m4a")
                     "Mix saved to ${published.displayPath}"
                 } else {
                     "Mix failed (rc=${result.returnCode})"
                 }
-            } catch (t: Throwable) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Exception) {
                 status = "Mix failed: ${t.message}"
             } finally {
+                owned.forEach { it.delete() }
                 busy = false
             }
         }

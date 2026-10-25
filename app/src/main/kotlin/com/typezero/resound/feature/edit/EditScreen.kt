@@ -106,6 +106,7 @@ import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
 import com.typezero.resound.ui.theme.TimecodeStyle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -150,7 +151,6 @@ fun EditScreen(
 
     val player = remember { AudioPlayer() }
     var playing by remember { mutableStateOf(false) }
-    DisposableEffect(Unit) { onDispose { player.release() } }
 
     // While playing, advance the playhead and stop at the end of the selection.
     LaunchedEffect(playing) {
@@ -167,6 +167,19 @@ fun EditScreen(
     var recording by remember { mutableStateOf(false) }
     var recordElapsed by remember { mutableLongStateOf(0L) } // seconds
     var recordFile by remember { mutableStateOf<File?>(null) }
+
+    val latestRecordFile by androidx.compose.runtime.rememberUpdatedState(recordFile)
+    val latestRecording by androidx.compose.runtime.rememberUpdatedState(recording)
+    // The current cached recording belongs to this editor session. Never
+    // delete it while AudioPlayer is holding it open. Release the player first.
+    DisposableEffect(Unit) {
+        onDispose {
+            player.release()
+            // Do not delete an in-progress capture here; Recorder lifecycle
+            // shutdown is a separate follow-up requiring synchronization.
+            if (!latestRecording) latestRecordFile?.delete()
+        }
+    }
 
     LaunchedEffect(recording) {
         while (recording) {
@@ -192,6 +205,11 @@ fun EditScreen(
                 status = "Decoding waveform…"
                 waveform = waveformExtractor.extract(af, targetBuckets = 1200)
                 runCatching { player.prepare(context, uri) }
+                val priorRecording = recordFile
+                if (priorRecording != null && uri != Uri.fromFile(priorRecording)) {
+                    recordFile = null
+                    priorRecording.delete()
+                }
                 status = doneMsg(af)
             } catch (t: Throwable) {
                 status = "Load failed: ${t.message}"
@@ -218,24 +236,29 @@ fun EditScreen(
     ) {
         val af = current ?: return
         scope.launch {
+            val owned = mutableListOf<File>()
             try {
                 busy = true
                 status = "$label…"
-                val src = AudioFiles.resolveToCache(context, af)
+                val src = AudioFiles.resolveToCache(context, af).also { owned += it }
                 val temp = Outputs.newTempFile(context, label.lowercase().replace(" ", "-"), outExt)
+                    .also { owned += it }
                 val args = makeArgs(src.absolutePath, temp.absolutePath)
                 val res = ffmpeg.run(args, totalMs) { ratio, _ ->
                     if (ratio != null) status = "$label… ${(ratio * 100).toInt()}%"
                 }
                 status = if (res.isSuccess) {
-                    val pub = Outputs.publishToMusic(context, temp, temp.name, outExt)
+                    val pub = Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt)
                     "Saved to ${pub.displayPath}"
                 } else {
                     "FFmpeg failed (rc=${res.returnCode})"
                 }
-            } catch (t: Throwable) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Exception) {
                 status = "$label failed: ${t.message}"
             } finally {
+                owned.forEach { it.delete() }
                 busy = false
             }
         }
@@ -250,24 +273,29 @@ fun EditScreen(
     ) {
         val af = current ?: return
         scope.launch {
+            val owned = mutableListOf<File>()
             try {
                 busy = true
                 status = "$label…"
-                val a = AudioFiles.resolveToCache(context, af)
+                val a = AudioFiles.resolveToCache(context, af).also { owned += it }
                 val secondAf = AudioFiles.readMetadata(context, secondUri)
-                val b = AudioFiles.resolveToCache(context, secondAf)
+                val b = AudioFiles.resolveToCache(context, secondAf).also { owned += it }
                 val temp = Outputs.newTempFile(context, label.lowercase(), outExt)
+                    .also { owned += it }
                 val args = makeArgs(a.absolutePath, b.absolutePath, temp.absolutePath)
                 val res = ffmpeg.run(args)
                 status = if (res.isSuccess) {
-                    val pub = Outputs.publishToMusic(context, temp, temp.name, outExt)
+                    val pub = Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt)
                     "Saved to ${pub.displayPath}"
                 } else {
                     "FFmpeg failed (rc=${res.returnCode})"
                 }
-            } catch (t: Throwable) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Exception) {
                 status = "$label failed: ${t.message}"
             } finally {
+                owned.forEach { it.delete() }
                 busy = false
             }
         }
@@ -308,7 +336,6 @@ fun EditScreen(
     fun startRecording() {
         try {
             val f = Outputs.newTempFile(context, "recording", "m4a")
-            recordFile = f
             recorder.start(f.absolutePath)
             recordElapsed = 0L
             recording = true
@@ -339,11 +366,18 @@ fun EditScreen(
                 status = "Decoding waveform…"
                 waveform = waveformExtractor.extract(af, targetBuckets = 1200)
                 runCatching { player.prepare(context, Uri.fromFile(recFile)) }
+                val oldRecording = recordFile
+                recordFile = recFile
+                if (oldRecording != null && oldRecording != recFile) oldRecording.delete()
                 // Save a copy to the shared library (publish consumes its temp).
                 val copy = Outputs.newTempFile(context, "recording", "m4a")
-                recFile.copyTo(copy, overwrite = true)
-                val pub = Outputs.publishToMusic(context, copy, copy.name, "m4a")
-                status = "Recorded & saved to ${pub.displayPath}"
+                try {
+                    recFile.copyTo(copy, overwrite = true)
+                    val pub = Outputs.publishToMusic(context, copy, Outputs.exportName("recording", "m4a"), "m4a")
+                    status = "Recorded & saved to ${pub.displayPath}"
+                } finally {
+                    copy.delete()
+                }
             } catch (t: Throwable) {
                 status = "Recording load failed: ${t.message}"
             } finally {
@@ -389,18 +423,23 @@ fun EditScreen(
             return
         }
         scope.launch {
+            var src: File? = null
             try {
                 busy = true
                 status = "Setting ringtone…"
-                val src = AudioFiles.resolveToCache(context, af)
-                when (val r = Ringtones.setAsDefault(context, src, af.displayName, srcExt())) {
+                val cached = AudioFiles.resolveToCache(context, af)
+                src = cached
+                when (val r = Ringtones.setAsDefault(context, cached, af.displayName, srcExt())) {
                     is Ringtones.Result.Ok -> status = "Ringtone set: ${r.name}"
                     is Ringtones.Result.NeedsPermission -> status = "Permission needed to set ringtone."
                     is Ringtones.Result.Error -> status = "Ringtone failed: ${r.message}"
                 }
-            } catch (t: Throwable) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Exception) {
                 status = "Ringtone failed: ${t.message}"
             } finally {
+                src?.delete()
                 busy = false
             }
         }

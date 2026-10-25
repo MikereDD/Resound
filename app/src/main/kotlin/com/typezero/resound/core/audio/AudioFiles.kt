@@ -26,38 +26,38 @@ object AudioFiles {
         withContext(Dispatchers.IO) {
             val name = queryDisplayName(context, uri) ?: "audio"
             val extractor = MediaExtractor()
-            // PFD must stay open for the whole extraction — MediaExtractor reads
-            // lazily, so closing it before reading track formats would break it.
-            val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                ?: throw IllegalArgumentException("Could not open $uri")
             try {
-                extractor.setDataSource(pfd.fileDescriptor)
-                var fmt: MediaFormat? = null
-                for (i in 0 until extractor.trackCount) {
-                    val f = extractor.getTrackFormat(i)
-                    if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-                        fmt = f; break
-                    }
-                }
-                val mime = fmt?.getString(MediaFormat.KEY_MIME) ?: "audio/unknown"
-                val durUs = fmt?.takeIf { it.containsKey(MediaFormat.KEY_DURATION) }
-                    ?.getLong(MediaFormat.KEY_DURATION) ?: 0L
-                val sampleRate = fmt?.takeIf { it.containsKey(MediaFormat.KEY_SAMPLE_RATE) }
-                    ?.getInteger(MediaFormat.KEY_SAMPLE_RATE) ?: 44_100
-                val channels = fmt?.takeIf { it.containsKey(MediaFormat.KEY_CHANNEL_COUNT) }
-                    ?.getInteger(MediaFormat.KEY_CHANNEL_COUNT) ?: 2
+                // PFD must remain open while MediaExtractor reads track formats.
+                val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    ?: throw IllegalArgumentException("Could not open $uri")
+                pfd.use {
+                        extractor.setDataSource(pfd.fileDescriptor)
+                        var fmt: MediaFormat? = null
+                        for (i in 0 until extractor.trackCount) {
+                            val f = extractor.getTrackFormat(i)
+                            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                                fmt = f; break
+                            }
+                        }
+                        val mime = fmt?.getString(MediaFormat.KEY_MIME) ?: "audio/unknown"
+                        val durUs = fmt?.takeIf { it.containsKey(MediaFormat.KEY_DURATION) }
+                            ?.getLong(MediaFormat.KEY_DURATION) ?: 0L
+                        val sampleRate = fmt?.takeIf { it.containsKey(MediaFormat.KEY_SAMPLE_RATE) }
+                            ?.getInteger(MediaFormat.KEY_SAMPLE_RATE) ?: 44_100
+                        val channels = fmt?.takeIf { it.containsKey(MediaFormat.KEY_CHANNEL_COUNT) }
+                            ?.getInteger(MediaFormat.KEY_CHANNEL_COUNT) ?: 2
 
-                AudioFile(
-                    uri = uri,
-                    displayName = name,
-                    durationMs = durUs / 1000,
-                    sampleRate = sampleRate,
-                    channels = channels,
-                    mimeType = mime,
-                )
+                        AudioFile(
+                            uri = uri,
+                            displayName = name,
+                            durationMs = durUs / 1000,
+                            sampleRate = sampleRate,
+                            channels = channels,
+                            mimeType = mime,
+                        )
+                }
             } finally {
                 extractor.release()
-                pfd.close()
             }
         }
 
@@ -67,13 +67,19 @@ object AudioFiles {
      */
     suspend fun resolveToCache(context: Context, file: AudioFile): File =
         withContext(Dispatchers.IO) {
-            val ext = file.displayName.substringAfterLast('.', "").ifEmpty { "tmp" }
-            val dst = File(context.cacheDir, "src_${System.currentTimeMillis()}.$ext")
-            context.contentResolver.openInputStream(file.uri).use { input ->
-                requireNotNull(input) { "Could not open stream for ${file.uri}" }
-                dst.outputStream().use { output -> input.copyTo(output) }
+            val ext = file.displayName.substringAfterLast('.', "")
+                .lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,10}")) } ?: "tmp"
+            val dst = File.createTempFile("src_", ".$ext", context.cacheDir)
+            try {
+                context.contentResolver.openInputStream(file.uri).use { input ->
+                    requireNotNull(input) { "Could not open stream for ${file.uri}" }
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+                dst
+            } catch (failure: Throwable) {
+                dst.delete()
+                throw failure
             }
-            dst
         }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {

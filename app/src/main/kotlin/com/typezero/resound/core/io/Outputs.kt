@@ -25,6 +25,18 @@ object Outputs {
 
     data class Published(val uri: Uri, val displayPath: String)
 
+    /** Public export names: readable timestamp plus short random collision guard. */
+    fun exportName(baseName: String, ext: String): String {
+        require(ext.matches(Regex("[A-Za-z0-9]{1,10}"))) { "Invalid audio extension" }
+        val prefix = baseName.lowercase(java.util.Locale.ROOT)
+            .replace(Regex("[^a-z0-9_-]"), "-")
+            .trim('-').take(28).ifBlank { "audio" }
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            .format(java.util.Date())
+        val suffix = java.util.UUID.randomUUID().toString().take(8)
+        return "${prefix}_${stamp}_${suffix}.${ext.lowercase(java.util.Locale.ROOT)}"
+    }
+
     fun mimeFor(ext: String): String = when (ext.lowercase()) {
         "mp3" -> "audio/mpeg"
         "m4a" -> "audio/mp4"
@@ -37,8 +49,12 @@ object Outputs {
 
     /** Temp file in cache for FFmpeg to write to before publishing. */
     fun newTempFile(context: Context, baseName: String, ext: String): File {
-        val dir = File(context.cacheDir, "out").apply { mkdirs() }
-        return File(dir, "${baseName}_${System.currentTimeMillis()}.$ext")
+        val dir = File(context.cacheDir, "out")
+        check(dir.isDirectory || dir.mkdirs()) { "Could not create output cache" }
+        require(ext.matches(Regex("[A-Za-z0-9]{1,10}"))) { "Invalid audio extension" }
+        val safeName = baseName.replace(Regex("[^A-Za-z0-9_-]"), "-").take(40)
+            .ifBlank { "output" }
+        return File.createTempFile("${safeName}_", ".$ext", dir)
     }
 
     /**
@@ -58,24 +74,51 @@ object Outputs {
             }
             val uri = resolver.insert(collection, values)
                 ?: throw IllegalStateException("MediaStore insert failed")
-            resolver.openOutputStream(uri).use { out ->
-                requireNotNull(out) { "Could not open output stream" }
-                temp.inputStream().use { it.copyTo(out) }
+            try {
+                resolver.openOutputStream(uri).use { out ->
+                    requireNotNull(out) { "Could not open output stream" }
+                    temp.inputStream().use { it.copyTo(out) }
+                }
+                values.clear()
+                values.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                check(resolver.update(uri, values, null, null) == 1) {
+                    "Could not finalize MediaStore export"
+                }
+            } catch (failure: Throwable) {
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (cleanupFailure: Throwable) {
+                    failure.addSuppressed(cleanupFailure)
+                }
+                throw failure
             }
-            values.clear()
-            values.put(MediaStore.Audio.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
             temp.delete()
             return Published(uri, "Music/$SUBDIR/$displayName")
         } else {
             @Suppress("DEPRECATION")
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), SUBDIR)
-            dir.mkdirs()
-            val dest = File(dir, displayName)
-            temp.copyTo(dest, overwrite = true)
-            temp.delete()
-            MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), arrayOf(mime), null)
-            return Published(Uri.fromFile(dest), "Music/$SUBDIR/$displayName")
+            check(dir.isDirectory || dir.mkdirs()) { "Could not create Music/Resound" }
+            // Never overwrite an existing export and never expose a partial copy.
+            val name = File(displayName).name
+            require(name == displayName && name != "." && name != "..") { "Invalid export name" }
+            val stage = File.createTempFile(".resound_", ".part", dir)
+            try {
+                temp.copyTo(stage, overwrite = true)
+                var dest = File(dir, name)
+                var suffix = 1
+                while (dest.exists()) {
+                    val stem = name.substringBeforeLast('.', name)
+                    val extension = name.substringAfterLast('.', "")
+                    dest = File(dir, "${stem}_$suffix${if (extension.isEmpty()) "" else ".$extension"}")
+                    suffix++
+                }
+                check(stage.renameTo(dest)) { "Could not finalize export" }
+                temp.delete()
+                MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), arrayOf(mime), null)
+                return Published(Uri.fromFile(dest), "Music/$SUBDIR/${dest.name}")
+            } finally {
+                stage.delete()
+            }
         }
     }
 }

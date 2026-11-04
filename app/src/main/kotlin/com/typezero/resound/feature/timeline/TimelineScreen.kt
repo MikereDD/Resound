@@ -89,11 +89,13 @@ import com.typezero.resound.ui.theme.TimecodeStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
+import com.typezero.resound.core.io.OperationFiles
+import com.typezero.resound.core.io.runCommitted
+import com.typezero.resound.core.io.allocateOwnedTemp
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private const val MIN_CLIP_MS = 200L
 private const val LANE_H = 86
 private val TRACK_LABEL_WIDTH = 94.dp
 
@@ -101,6 +103,7 @@ private val TRACK_LABEL_WIDTH = 94.dp
 fun TimelineScreen(
     waveformExtractor: WaveformExtractor,
     ffmpeg: FFmpegRunner,
+    session: TimelineSession,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,19 +111,25 @@ fun TimelineScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    var tracks by remember { mutableStateOf(emptyList<Track>()) }
-    var idCounter by remember { mutableLongStateOf(1L) }
-    var selectedClip by remember { mutableStateOf<Long?>(null) }
+    androidx.activity.compose.BackHandler { onBack() }
+
+    // Arrangement state lives in [session] (owned above the destination switch).
+    var tracks by session::tracks
+    var selectedClip by session::selectedClip
     var addTrackId by remember { mutableStateOf<Long?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Add a track, then place audio clips on the timeline.") }
-    var pxPerSec by remember { mutableFloatStateOf(24f) }
+    var pxPerSec by session::pxPerSec
 
-    fun nextId(): Long = idCounter++
+    val editingEnabled = session.recoveryReady && !busy
+
+    fun nextId(): Long = session.nextId()
     fun updateTrack(id: Long, transform: (Track) -> Track) {
+        if (!session.recoveryReady) return
         tracks = tracks.map { if (it.id == id) transform(it) else it }
     }
     fun updateClip(trackId: Long, clipId: Long, transform: (Clip) -> Clip) {
+        if (!editingEnabled) return
         updateTrack(trackId) { track ->
             track.copy(clips = track.clips.map { if (it.id == clipId) transform(it) else it })
         }
@@ -134,16 +143,27 @@ fun TimelineScreen(
     val clipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val trackId = addTrackId
         addTrackId = null
-        if (uri == null || trackId == null) return@rememberLauncherForActivityResult
+        if (uri == null || trackId == null || !session.recoveryReady) return@rememberLauncherForActivityResult
         scope.launch {
             try {
                 busy = true
                 status = "Adding clip…"
                 val audio = AudioFiles.readMetadata(context, uri)
+                if (audio.durationMs <= 0L) {
+                    status = "Could not add clip: unknown or zero duration."
+                    return@launch
+                }
+                // Metadata-only recovery needs a grant that survives process death; reject imports
+                // whose provider will not retain read access rather than promising durable recovery.
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
                 val waveform = waveformExtractor.extract(audio, targetBuckets = 600)
                 updateTrack(trackId) { it.copy(clips = it.clips + Clip(nextId(), audio, waveform, startMs = 0L)) }
                 status = "Added ${audio.displayName}"
-            } catch (t: Throwable) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Exception) {
                 status = "Could not add clip: ${t.message}"
             } finally {
                 busy = false
@@ -152,8 +172,9 @@ fun TimelineScreen(
     }
 
     fun exportMix() {
+        if (!editingEnabled) return
         scope.launch {
-            val owned = mutableListOf<File>()
+            val owned = OperationFiles()
             try {
                 busy = true
                 status = "Mixing tracks…"
@@ -164,21 +185,23 @@ fun TimelineScreen(
                     status = "Add a clip to an unmuted track first."
                     return@launch
                 }
+                if (active.any { !it.second.sourceAvailable }) {
+                    status = "Mix blocked: an audio reference is unavailable. Automatic draft retained."
+                    return@launch
+                }
                 val inputs = active.map { (track, clip) ->
                     Effects.TimelineInput(
-                        path = AudioFiles.resolveToCache(context, clip.source)
-                            .also { owned += it }.absolutePath,
+                        path = AudioFiles.resolveToCache(context, clip.source, owned).absolutePath,
                         startMs = clip.startMs,
                         inMs = clip.sourceInMs,
                         outMs = clip.sourceOutMs,
                         volume = track.volume,
                     )
                 }
-                val temp = Outputs.newTempFile(context, "mix", "m4a")
-                    .also { owned += it }
-                val result = ffmpeg.run(Effects.mixTimeline(inputs, temp.absolutePath))
+                val temp = allocateOwnedTemp(context, "mix", "m4a", owned)
+                val result = ffmpeg.run(Effects.mixTimeline(inputs, temp.absolutePath), 0L, owned)
                 status = if (result.isSuccess) {
-                    val published = Outputs.publishToMusic(context, temp, Outputs.exportName("mix", "m4a"), "m4a")
+                    val published = runCommitted { Outputs.publishToMusic(context, temp, Outputs.exportName("mix", "m4a"), "m4a") }
                     "Mix saved to ${published.displayPath}"
                 } else {
                     "Mix failed (rc=${result.returnCode})"
@@ -188,7 +211,7 @@ fun TimelineScreen(
             } catch (t: Throwable) {
                 status = "Mix failed: ${t.message}"
             } finally {
-                owned.forEach { it.delete() }
+                owned.deleteAll()
                 busy = false
             }
         }
@@ -215,7 +238,7 @@ fun TimelineScreen(
                     ) {
                         Button(
                             onClick = { tracks = tracks + Track(nextId(), "Track ${tracks.size + 1}") },
-                            enabled = !busy,
+                            enabled = editingEnabled,
                             modifier = Modifier.weight(1f).height(60.dp),
                         ) {
                             Icon(Icons.Outlined.Add, contentDescription = null)
@@ -224,7 +247,7 @@ fun TimelineScreen(
                         }
                         OutlinedButton(
                             onClick = { exportMix() },
-                            enabled = !busy && tracks.any { it.clips.isNotEmpty() },
+                            enabled = editingEnabled && tracks.any { it.clips.isNotEmpty() },
                             modifier = Modifier.weight(1f).height(60.dp),
                             border = BorderStroke(1.dp, Signal),
                         ) {
@@ -245,17 +268,20 @@ fun TimelineScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ZoomButton(Icons.Outlined.Remove, "Zoom out") {
-                                pxPerSec = (pxPerSec / 1.35f).coerceAtLeast(6f)
+                                if (editingEnabled) pxPerSec = (pxPerSec / 1.35f).coerceAtLeast(6f)
                             }
                             ZoomButton(Icons.Outlined.Add, "Zoom in") {
-                                pxPerSec = (pxPerSec * 1.35f).coerceAtMost(240f)
+                                if (editingEnabled) pxPerSec = (pxPerSec * 1.35f).coerceAtMost(240f)
                             }
                         }
                     }
                 }
             }
 
-            StatusStrip(status = status, busy = busy)
+            Text(session.draftStatus, style = MaterialTheme.typography.bodyMedium)
+            session.persistenceError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            StatusStrip(status = status, busy = busy || !session.recoveryReady)
+            TimelineDiagnostics(session)
 
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val availablePx = with(density) { (maxWidth - TRACK_LABEL_WIDTH).toPx().coerceAtLeast(1f) }
@@ -281,33 +307,26 @@ fun TimelineScreen(
                                 pxPerMs = pxPerMs,
                                 scrollState = horizontalScroll,
                                 selectedClip = selectedClip,
-                                enabled = !busy,
+                                enabled = editingEnabled,
                                 onAddClip = {
                                     addTrackId = track.id
                                     clipPicker.launch(arrayOf("audio/*", "video/*"))
                                 },
                                 onToggleMute = { updateTrack(track.id) { it.copy(muted = !it.muted) } },
-                                onSelectClip = { selectedClip = it },
+                                onSelectClip = { if (editingEnabled) selectedClip = it },
                                 onMove = { clipId, delta ->
                                     updateClip(track.id, clipId) { it.copy(startMs = (it.startMs + delta).coerceAtLeast(0L)) }
                                 },
                                 onTrimIn = { clipId, delta ->
                                     updateClip(track.id, clipId) { clip ->
-                                        val newIn = (clip.sourceInMs + delta)
-                                            .coerceIn(0L, clip.sourceOutMs - MIN_CLIP_MS)
-                                        val adjustment = newIn - clip.sourceInMs
-                                        clip.copy(
-                                            sourceInMs = newIn,
-                                            startMs = (clip.startMs + adjustment).coerceAtLeast(0L),
-                                        )
+                                        val r = TrimMath.trimIn(ClipSpan(clip.startMs, clip.sourceInMs, clip.sourceOutMs), delta, clip.source.durationMs)
+                                        clip.copy(startMs = r.startMs, sourceInMs = r.inMs, sourceOutMs = r.outMs)
                                     }
                                 },
                                 onTrimOut = { clipId, delta ->
                                     updateClip(track.id, clipId) { clip ->
-                                        clip.copy(
-                                            sourceOutMs = (clip.sourceOutMs + delta)
-                                                .coerceIn(clip.sourceInMs + MIN_CLIP_MS, clip.source.durationMs),
-                                        )
+                                        val r = TrimMath.trimOut(ClipSpan(clip.startMs, clip.sourceInMs, clip.sourceOutMs), delta, clip.source.durationMs)
+                                        clip.copy(sourceOutMs = r.outMs)
                                     }
                                 },
                             )
@@ -703,7 +722,7 @@ private fun ClipBox(
             }
         }
         Text(
-            clip.source.displayName,
+            if (clip.sourceAvailable) clip.source.displayName else "Unavailable: ${clip.source.displayName}",
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.92f),

@@ -65,11 +65,18 @@ object AudioFiles {
      * Copy [uri] into cacheDir and return the file, so FFmpeg has a path.
      * The extension is preserved from the display name where possible.
      */
-    suspend fun resolveToCache(context: Context, file: AudioFile): File =
+    suspend fun resolveToCache(
+        context: Context,
+        file: AudioFile,
+        owner: com.typezero.resound.core.io.OperationFiles? = null,
+    ): File =
         withContext(Dispatchers.IO) {
             val ext = file.displayName.substringAfterLast('.', "")
                 .lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,10}")) } ?: "tmp"
             val dst = File.createTempFile("src_", ".$ext", context.cacheDir)
+            // Register ownership before any copy/suspension so a cancellation racing the
+            // withContext return cannot orphan the file.
+            owner?.adopt(dst)
             try {
                 context.contentResolver.openInputStream(file.uri).use { input ->
                     requireNotNull(input) { "Could not open stream for ${file.uri}" }

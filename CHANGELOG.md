@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — player / waveform readiness (Phase 1)
+
+- Bind Editor Play and Seek to the prepared source, invalidating old playback only after valid metadata is accepted. Preparation failure keeps the new metadata/real waveform and reports Playback unavailable.
+- Retire native preview players on an owned IO worker outside the readiness monitor, releasing directly without an invalid pause of prepared or failed players. Source adoption waits cooperatively up to 5 seconds for retirement; cancellation, timeout or cleanup failure keeps the prior identity unavailable instead of displaying a new source over old playback. Disposal revokes immediately while late preparation/cleanup remains owned.
+- Keep waveform availability independent of playback; decode failures no longer manufacture synthetic amplitudes. Synthetic development previews carry provenance.
+- Register codec ownership before configure/start, clean resources independently, propagate cancellation, and bound cooperative decode waiting (5 seconds without progress / 120 seconds overall). Native vendor calls cannot be hard-preempted.
+- Add focused host regressions for source switching, readiness, native transport errors, cancellation, ownership, PCM folding and bounded waits. Device playback/lifecycle validation is not claimed.
+
+## Unreleased — recording-draft safety
+
+- Retain original recording drafts during Editor startup, disposal and source switching; receipts no longer authorize automatic deletion.
+- Verify finalized, readable, byte-identical publication copies before tracking or hiding a duplicate. Malformed, missing, denied or unverifiable destinations keep drafts recoverable.
+- Add host regressions for cold-owner recovery, verification failures, receipt bounds and retained publication originals. Android provider/device verification remains pending review and explicit authorization.
+
 ## 0.8.0-dev.6
 
 - Prepared the standalone Resound repository for its GitHub mirror.

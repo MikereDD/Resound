@@ -12,14 +12,18 @@ android {
         applicationId = "com.typezero.resound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.8.0-dev.6"
+        versionCode = 20
+        versionName = "0.8.0-dev.7"
 
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
             "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update.json\"",
         )
+
+        // Public output folder under Music/ and test-variant switch (overridden by devtest).
+        buildConfigField("String", "OUTPUT_SUBDIR", "\"Resound\"")
+        buildConfigField("boolean", "IS_DEVTEST", "false")
 
         // FFmpeg ships large native libs — restrict ABIs to keep the APK sane.
         ndk {
@@ -28,6 +32,15 @@ android {
     }
 
     buildTypes {
+        // Isolated device-test variant: separate package, label, icon colour, public folder.
+        create("devtest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".devtest"
+            isDebuggable = true
+            matchingFallbacks += "debug"
+            buildConfigField("String", "OUTPUT_SUBDIR", "\"Resound DEV TEST\"")
+            buildConfigField("boolean", "IS_DEVTEST", "true")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -68,6 +81,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     implementation(libs.kotlinx.coroutines.android)
+
+    // Host-side unit tests (JUnit 4.13.2, already in the local Gradle cache).
+    testImplementation("junit:junit:4.13.2")
 
     // ── FFmpeg engine ───────────────────────────────────────────────────────
     // ffmpeg-kit was retired by arthenica and pulled from Maven Central. This is

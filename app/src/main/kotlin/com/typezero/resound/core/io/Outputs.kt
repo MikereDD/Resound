@@ -21,7 +21,7 @@ import android.provider.MediaStore
 import java.io.File
 
 object Outputs {
-    const val SUBDIR = "Resound"
+    const val SUBDIR: String = com.typezero.resound.BuildConfig.OUTPUT_SUBDIR
 
     data class Published(val uri: Uri, val displayPath: String)
 

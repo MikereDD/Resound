@@ -86,14 +86,19 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.typezero.resound.core.audio.AudioFile
 import com.typezero.resound.core.audio.AudioFiles
-import com.typezero.resound.core.audio.AudioPlayer
 import com.typezero.resound.core.audio.Waveform
+import com.typezero.resound.core.audio.WaveformProvenance
 import com.typezero.resound.core.audio.WaveformExtractor
 import com.typezero.resound.core.ffmpeg.FFmpegRunner
 import com.typezero.resound.core.io.Outputs
 import com.typezero.resound.core.io.Ringtones
 import com.typezero.resound.feature.effects.Effects
-import com.typezero.resound.feature.record.Recorder
+import com.typezero.resound.feature.record.RecordingController
+import com.typezero.resound.feature.record.RecordingRecoveryAdmission
+import kotlinx.coroutines.flow.collect
+import com.typezero.resound.core.io.PublishedButUntracked
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.typezero.resound.ui.components.ResoundCard
 import com.typezero.resound.ui.theme.Amber
 import com.typezero.resound.ui.theme.InkRaised
@@ -109,6 +114,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
+import com.typezero.resound.core.io.DraftStore
+import com.typezero.resound.core.io.OperationFiles
+import com.typezero.resound.core.io.publishDraft
+import com.typezero.resound.core.io.publishDraftIfUnpublished
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.typezero.resound.core.io.allocateOwnedTemp
+import com.typezero.resound.core.io.runCommitted
 
 private fun fmt(ms: Long): String {
     val totalSec = ms / 1000
@@ -121,12 +135,15 @@ private fun fmt(ms: Long): String {
 fun EditScreen(
     waveformExtractor: WaveformExtractor,
     ffmpeg: FFmpegRunner,
-    recorder: Recorder,
+    recorder: RecordingController,
     initialUri: Uri? = null,
     modifier: Modifier = Modifier,
+    playerFactory: com.typezero.resound.core.audio.AudioPlayerFactory =
+        com.typezero.resound.core.audio.PlayerRuntimeProvider.playerFactory(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val drafts = remember(context, recorder) { DraftStore.forContext(context, recorder.recoveryAdmission) }
 
     // API 26-28 needs WRITE_EXTERNAL_STORAGE to publish into public Music.
     // 29+ uses MediaStore and needs nothing — this is a no-op there.
@@ -149,42 +166,75 @@ fun EditScreen(
     var pendingOp by remember { mutableStateOf<EditOp?>(null) }
     var pendingMulti by remember { mutableStateOf<EditOp?>(null) }
 
-    val player = remember { AudioPlayer() }
+    val player = remember { playerFactory.create() }
     var playing by remember { mutableStateOf(false) }
+    var playbackReady by remember { mutableStateOf(false) }
 
     // While playing, advance the playhead and stop at the end of the selection.
-    LaunchedEffect(playing) {
-        while (playing) {
+    LaunchedEffect(player) {
+        while (true) {
             delay(50)
-            playhead = player.currentMs
-            if (!player.isPlaying || playhead >= selEnd) {
-                player.pause()
+            try {
+                if (playbackReady && current?.uri?.let { player.readyFor(it) } != true) {
+                    playbackReady = false
+                    playing = false
+                    status = "Playback unavailable"
+                }
+                if (playing) {
+                    playhead = player.currentMs
+                    if (!player.isPlaying || playhead >= selEnd) {
+                        player.pause()
+                        playing = false
+                    }
+                }
+            } catch (c: CancellationException) { throw c } catch (_: Exception) {
+                playbackReady = false
                 playing = false
+                status = "Playback unavailable"
             }
         }
     }
 
     var recording by remember { mutableStateOf(false) }
+    var recorderBusy by remember { mutableStateOf(false) } // start/stop in flight
+    var recorderStarting by remember { mutableStateOf(false) } // native start in flight
+    var stopWhenStarted by remember { mutableStateOf(false) } // Editor left the foreground during start
+    var draftList by remember { mutableStateOf(emptyList<RecordingRecoveryAdmission.Candidate>()) }
+    var recoveryNotice by remember { mutableStateOf<String?>(null) }
+    var recordToken by remember { mutableLongStateOf(0L) }
     var recordElapsed by remember { mutableLongStateOf(0L) } // seconds
     var recordFile by remember { mutableStateOf<File?>(null) }
 
-    val latestRecordFile by androidx.compose.runtime.rememberUpdatedState(recordFile)
-    val latestRecording by androidx.compose.runtime.rememberUpdatedState(recording)
-    // The current cached recording belongs to this editor session. Never
-    // delete it while AudioPlayer is holding it open. Release the player first.
+    // Publication receipts never authorize lifecycle deletion of a recording draft.
+    fun refreshDrafts() {
+        drafts.requestRecoveryRefresh()
+    }
+    // Also runs after a process restart: unpublished drafts are rediscovered from filesDir.
+    LaunchedEffect(drafts) {
+        drafts.recoveryUpdates().collect { listing ->
+            draftList = listing.candidates
+            recoveryNotice = listing.protections.map { protection ->
+                when (protection.state) {
+                    RecordingRecoveryAdmission.State.STARTING -> "Recording draft protected: native start in progress."
+                    RecordingRecoveryAdmission.State.CAPTURING -> "Recording draft protected: capture in progress."
+                    RecordingRecoveryAdmission.State.STOPPING -> "Recording draft protected: waiting for recorder termination."
+                    RecordingRecoveryAdmission.State.INDETERMINATE -> "Recording draft retained and protected: native termination is uncertain."
+                    RecordingRecoveryAdmission.State.FINALIZED -> "Recording draft protected: recovery work or its termination is uncertain."
+                }
+            }.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             player.release()
-            // The Editor owns its recording. Leaving this screen must not
-            // leave a microphone capture running without visible controls.
-            if (latestRecording || recorder.isRecording) {
-                try {
-                    recorder.stop()?.let { File(it).delete() }
-                } catch (_: Throwable) {
-                    // Recorder.stop is expected to release even on failure.
-                }
-            }
-            latestRecordFile?.delete()
+            // Stop the mic in the application scope (this composition scope is being cancelled).
+            // The captured file stays on disk as a draft; nothing is deleted here on Main.
+            // Only this composition's session may be stopped. A cancelled start owns its
+            // unpublished ticket in the controller and schedules ticket-specific cleanup there.
+            val token = recordToken
+            if (token != 0L) recorder.stopDetached(token)
+            // Keep the original even if it was published; Discard is an explicit user action.
         }
     }
 
@@ -198,31 +248,98 @@ fun EditScreen(
     fun srcExt(): String =
         current?.displayName?.substringAfterLast('.', "m4a")?.ifEmpty { "m4a" } ?: "m4a"
 
+    suspend fun loadPreview(
+        af: AudioFile,
+        onNativePreparationAttempted: () -> Unit = {},
+        onPreparationSucceeded: () -> Unit = {},
+    ): PreviewLoad.Result? {
+        val result = PreviewLoad().load(af.durationMs, {
+            player.invalidate()
+            playbackReady = false
+            playing = false
+            // Keep A's identity while owned IO retirement runs. Cancellation/timeout
+            // cannot abandon cleanup or adopt B beneath an old playing backend.
+            player.awaitRetirement()
+            waveform = null
+            playhead = 0L
+            current = af
+            selStart = 0L
+            selEnd = af.durationMs
+        }, { waveformExtractor.extract(af, targetBuckets = 1200) }, {
+            onNativePreparationAttempted()
+            player.prepare(context, af.uri)
+            onPreparationSucceeded()
+        }, isReady = { player.readyFor(af.uri) }, onWaveform = { waveform = it })
+        if (result != null) {
+            waveform = result.waveform
+            playbackReady = result.ready && player.readyFor(af.uri)
+        }
+        return if (result != null && result.ready && !playbackReady) {
+            result.copy(ready = false, message = "Playback unavailable")
+        } else result
+    }
+
+    /** Await actual metadata/decode/prepare work; recovery must not lease only a launch. */
+    suspend fun loadIntoAwaited(
+        uri: Uri,
+        onNativePreparationAttempted: () -> Unit = {},
+        doneMsg: (AudioFile) -> String,
+    ): Boolean {
+        var preparationSucceeded = false
+        try {
+            status = "Loading…"
+            val af = AudioFiles.readMetadata(context, uri)
+            val result = loadPreview(af, onNativePreparationAttempted, { preparationSucceeded = true })
+            if (result == null) {
+                status = EMPTY_AUDIO_MESSAGE
+                return false
+            }
+            val priorRecording = recordFile
+            if (priorRecording != null && uri != Uri.fromFile(priorRecording)) recordFile = null
+            status = result.message ?: doneMsg(af)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            status = "Load failed: ${t.message}"
+        }
+        // Preparation success is recorded at the native boundary, not inferred from UI text/readiness.
+        return preparationSucceeded
+    }
+
     fun loadInto(uri: Uri, doneMsg: (AudioFile) -> String) {
+        if (busy || recorderBusy) return
+        busy = true
+        scope.launch {
+            try { loadIntoAwaited(uri, doneMsg = doneMsg) } finally { busy = false }
+        }
+    }
+
+    suspend fun loadDraftPreview(
+        file: File,
+        lease: RecordingRecoveryAdmission.Lease,
+        doneMsg: (AudioFile) -> String,
+    ) {
+        // Same structured producer/retirement policy as the host regression. Installed reader
+        // lifetime remains RP03; a completed retirement queue is not positive native release proof.
+        lease.withPreviewPreparation(
+            awaitRetirement = { player.awaitRetirement() },
+            onUncertain = { status = "Draft retained and protected: playback cleanup is uncertain." },
+        ) { nativeAttempt ->
+            loadIntoAwaited(Uri.fromFile(file), nativeAttempt, doneMsg)
+        }
+    }
+
+    fun openDraft(candidate: RecordingRecoveryAdmission.Candidate) {
+        if (busy || recorderBusy) return
+        busy = true
         scope.launch {
             try {
-                busy = true
-                status = "Loading…"
-                playing = false
-                playhead = 0L
-                val af = AudioFiles.readMetadata(context, uri)
-                current = af
-                selStart = 0L
-                selEnd = af.durationMs
-                status = "Decoding waveform…"
-                waveform = waveformExtractor.extract(af, targetBuckets = 1200)
-                runCatching { player.prepare(context, uri) }
-                val priorRecording = recordFile
-                if (priorRecording != null && uri != Uri.fromFile(priorRecording)) {
-                    recordFile = null
-                    priorRecording.delete()
+                drafts.withRecovery(candidate) { file, lease ->
+                    loadDraftPreview(file, lease) { af -> "Loaded draft ${af.displayName}" }
                 }
-                status = doneMsg(af)
-            } catch (t: Throwable) {
-                status = "Load failed: ${t.message}"
-            } finally {
-                busy = false
-            }
+            } catch (c: CancellationException) { throw c }
+            catch (t: Exception) { status = "Draft unavailable: ${t.message}" }
+            finally { busy = false }
         }
     }
 
@@ -243,19 +360,18 @@ fun EditScreen(
     ) {
         val af = current ?: return
         scope.launch {
-            val owned = mutableListOf<File>()
+            val owned = OperationFiles()
             try {
                 busy = true
                 status = "$label…"
-                val src = AudioFiles.resolveToCache(context, af).also { owned += it }
-                val temp = Outputs.newTempFile(context, label.lowercase().replace(" ", "-"), outExt)
-                    .also { owned += it }
+                val src = AudioFiles.resolveToCache(context, af, owned)
+                val temp = allocateOwnedTemp(context, label.lowercase().replace(" ", "-"), outExt, owned)
                 val args = makeArgs(src.absolutePath, temp.absolutePath)
-                val res = ffmpeg.run(args, totalMs) { ratio, _ ->
+                val res = ffmpeg.run(args, totalMs, owned) { ratio, _ ->
                     if (ratio != null) status = "$label… ${(ratio * 100).toInt()}%"
                 }
                 status = if (res.isSuccess) {
-                    val pub = Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt)
+                    val pub = runCommitted { Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt) }
                     "Saved to ${pub.displayPath}"
                 } else {
                     "FFmpeg failed (rc=${res.returnCode})"
@@ -265,7 +381,7 @@ fun EditScreen(
             } catch (t: Throwable) {
                 status = "$label failed: ${t.message}"
             } finally {
-                owned.forEach { it.delete() }
+                owned.deleteAll()
                 busy = false
             }
         }
@@ -280,19 +396,18 @@ fun EditScreen(
     ) {
         val af = current ?: return
         scope.launch {
-            val owned = mutableListOf<File>()
+            val owned = OperationFiles()
             try {
                 busy = true
                 status = "$label…"
-                val a = AudioFiles.resolveToCache(context, af).also { owned += it }
+                val a = AudioFiles.resolveToCache(context, af, owned)
                 val secondAf = AudioFiles.readMetadata(context, secondUri)
-                val b = AudioFiles.resolveToCache(context, secondAf).also { owned += it }
-                val temp = Outputs.newTempFile(context, label.lowercase(), outExt)
-                    .also { owned += it }
+                val b = AudioFiles.resolveToCache(context, secondAf, owned)
+                val temp = allocateOwnedTemp(context, label.lowercase(), outExt, owned)
                 val args = makeArgs(a.absolutePath, b.absolutePath, temp.absolutePath)
-                val res = ffmpeg.run(args)
+                val res = ffmpeg.run(args, 0L, owned)
                 status = if (res.isSuccess) {
-                    val pub = Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt)
+                    val pub = runCommitted { Outputs.publishToMusic(context, temp, Outputs.exportName(label, outExt), outExt) }
                     "Saved to ${pub.displayPath}"
                 } else {
                     "FFmpeg failed (rc=${res.returnCode})"
@@ -302,7 +417,7 @@ fun EditScreen(
             } catch (t: Throwable) {
                 status = "$label failed: ${t.message}"
             } finally {
-                owned.forEach { it.delete() }
+                owned.deleteAll()
                 busy = false
             }
         }
@@ -340,58 +455,146 @@ fun EditScreen(
         }
     }
 
-    fun startRecording() {
-        var temp: File? = null
-        try {
-            temp = Outputs.newTempFile(context, "recording", "m4a")
-            recorder.start(temp.absolutePath)
-            recordElapsed = 0L
-            recording = true
-            status = "Recording…"
-        } catch (t: Throwable) {
-            temp?.delete()
-            recording = false
-            status = "Record failed: ${t.message}"
+    fun stopRecording() {
+        if (recorderBusy || !recording) return
+        val token = recordToken
+        if (token == 0L) return
+        recorderBusy = true
+        scope.launch {
+            try {
+                val path = try { recorder.stop(token) } catch (c: CancellationException) { throw c } catch (t: Exception) { null }
+                recordToken = 0L
+                recording = false
+                if (path == null) {
+                    status = recorder.failure ?: "Recording not finalized. Draft retained."
+                    refreshDrafts()
+                    return@launch
+                }
+                val recFile = File(path)
+                recordFile = recFile
+                busy = true
+                val candidate = withContext(Dispatchers.IO) { drafts.candidate(recFile, token) }
+                    ?: error("Recording draft unavailable; retained without publication")
+                drafts.withRecovery(candidate) { admittedFile, lease ->
+                    status = try {
+                        val pub = publishDraft(context, drafts, admittedFile)
+                        "Recorded & saved to ${pub.displayPath}"
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: PublishedButUntracked) {
+                        "Audio was saved to the library, but local tracking failed. Draft kept; re-saving may duplicate it."
+                    } catch (t: Throwable) {
+                        "Recorded, but save to library failed (${t.message}). Kept as draft: ${admittedFile.name}"
+                    }
+                    val publicationStatus = status
+                    loadDraftPreview(admittedFile, lease) { publicationStatus }
+                }
+                refreshDrafts()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                status = "Recording kept as draft, but loading failed: ${t.message}"
+            } finally {
+                busy = false
+                recorderBusy = false
+            }
         }
     }
 
-    fun stopRecording() {
-        val path = recorder.stop()
+    /** Stop for leaving the foreground; never resets `busy` owned by another operation. */
+    fun stopForBackground() {
+        if (!recording || recorderBusy) return
+        if (!busy) { stopRecording(); return }
+        val token = recordToken
+        if (token == 0L) return
+        recordToken = 0L
         recording = false
-        if (path == null) {
-            status = "Recording failed."
-            return
-        }
+        recorder.stopDetached(token) // finalized draft stays in the recovery list
+        status = "Recording stopped when Resound left the screen. Draft kept for recovery."
+    }
+
+    fun startRecording() {
+        if (recorderBusy || recording) return
+        recorderBusy = true
+        recorderStarting = true
+        stopWhenStarted = false
         scope.launch {
             try {
-                busy = true
-                val recFile = File(path)
-                val af = AudioFiles.readMetadata(context, Uri.fromFile(recFile))
-                current = af
-                selStart = 0L
-                selEnd = af.durationMs
-                playing = false
-                playhead = 0L
-                status = "Decoding waveform…"
-                waveform = waveformExtractor.extract(af, targetBuckets = 1200)
-                runCatching { player.prepare(context, Uri.fromFile(recFile)) }
-                val oldRecording = recordFile
-                recordFile = recFile
-                if (oldRecording != null && oldRecording != recFile) oldRecording.delete()
-                // Save a copy to the shared library (publish consumes its temp).
-                val copy = Outputs.newTempFile(context, "recording", "m4a")
-                try {
-                    recFile.copyTo(copy, overwrite = true)
-                    val pub = Outputs.publishToMusic(context, copy, Outputs.exportName("recording", "m4a"), "m4a")
-                    status = "Recorded & saved to ${pub.displayPath}"
-                } finally {
-                    copy.delete()
-                }
+                val temp = withContext(Dispatchers.IO) { drafts.newFile("recording", "m4a") }
+                recordToken = recorder.start(temp.absolutePath)
+                recordElapsed = 0L
+                recording = true
+                status = "Recording…"
+            } catch (c: CancellationException) {
+                // Controller owns ticket-specific cancelled-start cleanup, including token zero.
+                throw c
             } catch (t: Throwable) {
-                status = "Recording load failed: ${t.message}"
+                // Retain even failed/partial start bytes; uncertainty is guarded by the owner.
+                recording = false
+                status = "Record failed; draft retained: ${t.message}"
             } finally {
-                busy = false
+                recorderStarting = false
+                recorderBusy = false
             }
+            if (stopWhenStarted) {
+                stopWhenStarted = false
+                stopForBackground()
+            }
+        }
+    }
+
+    fun publishExistingDraft(candidate: RecordingRecoveryAdmission.Candidate) {
+        if (busy || recorderBusy) return
+        busy = true
+        scope.launch {
+            try {
+                status = try {
+                    drafts.withRecovery(candidate) { file, _ ->
+                        publishDraftIfUnpublished(context, drafts, file)?.let { "Saved to ${it.displayPath}" }
+                            ?: "Already saved to the library. Draft kept."
+                    }
+                } catch (c: CancellationException) { throw c
+                } catch (e: PublishedButUntracked) {
+                    "Audio was saved, but local tracking failed. Draft kept; saving again may duplicate it."
+                } catch (t: Throwable) { "Save unavailable (${t.message}). Draft kept." }
+                refreshDrafts()
+            } finally { busy = false }
+        }
+    }
+
+    fun discardDraft(candidate: RecordingRecoveryAdmission.Candidate) {
+        if (busy || recorderBusy) return
+        busy = true
+        scope.launch {
+            try {
+                val ok = drafts.withRecovery(candidate) { file, lease ->
+                    if (current?.uri == Uri.fromFile(file)) {
+                        // Never unlink a loaded/playing source under its reader: revoke playback,
+                        // await owned retirement (throws if cleanup failed, keeping the draft),
+                        // then clear the Editor so it no longer shows a deleted file.
+                        playing = false
+                        playbackReady = false
+                        player.invalidate()
+                        try {
+                            player.awaitRetirement()
+                        } catch (failed: IllegalStateException) {
+                            lease.retainIndeterminate("Discard: playback cleanup uncertain: ${failed.message}")
+                            throw failed
+                        }
+                        current = null
+                        waveform = null
+                        selStart = 0L
+                        selEnd = 0L
+                        playhead = 0L
+                        if (recordFile == file) recordFile = null
+                    }
+                    withContext(Dispatchers.IO) { file.delete() }
+                }
+                status = if (ok) "Draft discarded." else "Could not discard draft."
+                refreshDrafts()
+            } catch (c: CancellationException) { throw c }
+            catch (t: Exception) { status = "Discard unavailable: ${t.message}" }
+            finally { busy = false }
         }
     }
 
@@ -412,16 +615,53 @@ fun EditScreen(
         }
     }
 
-    fun onPlayPause() {
+    fun transport(action: () -> Unit) {
+        val uri = current?.uri ?: return
+        if (!playbackReady || !player.readyFor(uri) || busy || recording) return
+        try { action() } catch (c: CancellationException) { throw c } catch (_: Exception) {
+            playbackReady = false
+            playing = false
+            status = "Playback unavailable"
+        }
+    }
+
+    fun onPlayPause() = transport {
         if (playing) {
             player.pause()
             playing = false
         } else {
-            if (current == null) return
+            val uri = current?.uri ?: return@transport
             val from = if (playhead in selStart until selEnd) playhead else selStart
-            player.play(from)
+            player.play(uri, from)
             playing = true
         }
+    }
+
+    // Leaving the foreground: Android would silence the microphone, so stop and keep the recording
+    // (published like a normal Stop), and pause playback. Not a background-recording service.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player, recorder, drafts) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    if (playing) {
+                        try { player.pause() } catch (c: CancellationException) { throw c } catch (_: Exception) {
+                            playbackReady = false
+                        }
+                        playing = false
+                    }
+                    when (backgroundRecordingAction(recording, recorderStarting, recorderBusy)) {
+                        BackgroundRecordingAction.STOP_NOW -> stopForBackground()
+                        BackgroundRecordingAction.STOP_AFTER_START -> stopWhenStarted = true
+                        BackgroundRecordingAction.NONE -> {}
+                    }
+                }
+                Lifecycle.Event.ON_START -> stopWhenStarted = false
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     fun onRingtone() {
@@ -432,13 +672,12 @@ fun EditScreen(
             return
         }
         scope.launch {
-            var src: File? = null
+            val owned = OperationFiles()
             try {
                 busy = true
                 status = "Setting ringtone…"
-                val cached = AudioFiles.resolveToCache(context, af)
-                src = cached
-                when (val r = Ringtones.setAsDefault(context, cached, af.displayName, srcExt())) {
+                val cached = AudioFiles.resolveToCache(context, af, owned)
+                when (val r = runCommitted { Ringtones.setAsDefault(context, cached, af.displayName, srcExt()) }) {
                     is Ringtones.Result.Ok -> status = "Ringtone set: ${r.name}"
                     is Ringtones.Result.NeedsPermission -> status = "Permission needed to set ringtone."
                     is Ringtones.Result.Error -> status = "Ringtone failed: ${r.message}"
@@ -448,7 +687,7 @@ fun EditScreen(
             } catch (t: Throwable) {
                 status = "Ringtone failed: ${t.message}"
             } finally {
-                src?.delete()
+                owned.deleteAll()
                 busy = false
             }
         }
@@ -476,8 +715,16 @@ fun EditScreen(
 
     fun onTap(op: EditOp) {
         when {
-            op == EditOp.TRIM -> runSingle("Trim", srcExt(), totalMs = selEnd - selStart) { s, o ->
-                Effects.trimEncode(s, o, selStart, selEnd)
+            op == EditOp.TRIM -> {
+                val af = current ?: return
+                // Capture the range now; the selection stays draggable while the job resolves input.
+                val start = selStart
+                val end = selEnd
+                if (!isTrimSelectionValid(start, end, af.durationMs)) {
+                    status = "Select at least ${MIN_TRIM_SELECTION_MS / 1000.0} s of audio to trim."
+                    return
+                }
+                runSingle("Trim", srcExt(), totalMs = end - start) { s, o -> Effects.trimEncode(s, o, start, end) }
             }
             op == EditOp.VOCAL -> runSingle("Vocal Remove", srcExt()) { s, o ->
                 Effects.vocalRemoveCenter(s, o)
@@ -509,6 +756,17 @@ fun EditScreen(
                 onRecord = { onRecordTap() },
             )
 
+            recoveryNotice?.let { Text(it, color = Amber) }
+            if (draftList.isNotEmpty()) {
+                DraftRecoveryCard(
+                    drafts = draftList,
+                    enabled = !busy && !recording && !recorderBusy,
+                    onLoad = { openDraft(it) },
+                    onSave = { publishExistingDraft(it) },
+                    onDiscard = { discardDraft(it) },
+                )
+            }
+
             WaveformWorkspace(
                 waveform = waveform,
                 selStart = selStart,
@@ -521,19 +779,25 @@ fun EditScreen(
             )
 
             TransportStrip(
-                enabled = current != null && !busy && !recording,
+                enabled = playbackReady && current?.uri?.let { player.readyFor(it) } == true && !busy && !recording,
                 playing = playing,
                 selStart = selStart,
                 selEnd = selEnd,
                 playhead = playhead,
                 onSeekBack = {
-                    playhead = (playhead - 10_000L).coerceAtLeast(selStart)
-                    player.seekTo(playhead)
+                    transport {
+                        val target = (playhead - 10_000L).coerceAtLeast(selStart)
+                        current?.uri?.let { player.seekTo(it, target) }
+                        playhead = target
+                    }
                 },
                 onPlayPause = { onPlayPause() },
                 onSeekForward = {
-                    playhead = (playhead + 10_000L).coerceAtMost(selEnd)
-                    player.seekTo(playhead)
+                    transport {
+                        val target = (playhead + 10_000L).coerceAtMost(selEnd)
+                        current?.uri?.let { player.seekTo(it, target) }
+                        playhead = target
+                    }
                 },
             )
 
@@ -690,7 +954,12 @@ private fun WaveformWorkspace(
             ) {
                 Text("WAVEFORM", style = MaterialTheme.typography.labelLarge, color = TextLo)
                 Text(
-                    if (waveform != null) "Selection ${fmt(selEnd - selStart)}" else "Waiting for audio",
+                    when (waveform?.provenance) {
+                        WaveformProvenance.UNAVAILABLE -> "Waveform unavailable"
+                        WaveformProvenance.SYNTHETIC -> "Synthetic preview"
+                        WaveformProvenance.REAL -> "Selection ${fmt(selEnd - selStart)}"
+                        null -> "Waiting for audio"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -702,7 +971,7 @@ private fun WaveformWorkspace(
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (waveform != null) {
+                if (waveform != null && waveform.provenance != WaveformProvenance.UNAVAILABLE) {
                     WaveformView(
                         waveform = waveform,
                         selStartMs = selStart,
@@ -717,7 +986,7 @@ private fun WaveformWorkspace(
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Icon(Icons.Default.GraphicEq, null, tint = TextLo, modifier = Modifier.size(42.dp))
-                        Text("Your waveform will appear here", color = TextMid, modifier = Modifier.padding(top = 10.dp))
+                        Text(if (waveform != null) "Waveform unavailable" else "Your waveform will appear here", color = TextMid, modifier = Modifier.padding(top = 10.dp))
                     }
                 }
             }
@@ -918,4 +1187,30 @@ private fun fmtDetailed(ms: Long): String {
     val seconds = totalSeconds % 60
     val millis = ms % 1000
     return "%02d:%02d.%03d".format(minutes, seconds, millis)
+}
+
+
+@Composable
+private fun DraftRecoveryCard(
+    drafts: List<RecordingRecoveryAdmission.Candidate>,
+    enabled: Boolean,
+    onLoad: (RecordingRecoveryAdmission.Candidate) -> Unit,
+    onSave: (RecordingRecoveryAdmission.Candidate) -> Unit,
+    onDiscard: (RecordingRecoveryAdmission.Candidate) -> Unit,
+) {
+    ResoundCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Unsaved recordings", fontWeight = FontWeight.Bold)
+            drafts.forEach { f ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(f.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onLoad(f) }, enabled = enabled) { Text("Open") }
+                        OutlinedButton(onClick = { onSave(f) }, enabled = enabled) { Text("Save") }
+                        OutlinedButton(onClick = { onDiscard(f) }, enabled = enabled) { Text("Discard") }
+                    }
+                }
+            }
+        }
+    }
 }

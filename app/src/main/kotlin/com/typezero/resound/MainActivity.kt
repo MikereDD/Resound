@@ -63,13 +63,15 @@ private fun ResoundRoot(container: AppContainer) {
                 ResoundDestination.Editor -> EditScreen(
                     waveformExtractor = container.waveformExtractor,
                     ffmpeg = container.ffmpeg,
-                    recorder = container.recorder,
+                    recorder = container.recordingController,
+                    playerFactory = container.playerFactory,
                     initialUri = editorRequestUri?.let(Uri::parse),
                 )
 
                 ResoundDestination.Multitrack -> TimelineScreen(
                     waveformExtractor = container.waveformExtractor,
                     ffmpeg = container.ffmpeg,
+                    session = container.timelineSession,
                     onBack = { destinationName = ResoundDestination.Editor.name },
                 )
 

@@ -1,6 +1,6 @@
 /*
  * file:    MainActivity.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.8.0-dev.6
  * desc:    Premium top-level app shell with persistent bottom navigation.
  */
@@ -17,11 +17,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.typezero.resound.di.AppContainer
 import com.typezero.resound.feature.edit.EditScreen
+import com.typezero.resound.feature.edit.EditorOpenRequest
+import com.typezero.resound.feature.edit.consumeEditorOpenRequest
 import com.typezero.resound.feature.library.LibraryScreen
 import com.typezero.resound.feature.settings.SettingsScreen
 import com.typezero.resound.feature.timeline.TimelineScreen
@@ -49,6 +52,7 @@ private fun ResoundRoot(container: AppContainer) {
     }
     val destination = ResoundDestination.valueOf(destinationName)
     var editorRequestUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var editorRequestId by rememberSaveable { mutableLongStateOf(0L) }
 
     Scaffold(
         bottomBar = {
@@ -66,6 +70,11 @@ private fun ResoundRoot(container: AppContainer) {
                     recorder = container.recordingController,
                     playerFactory = container.playerFactory,
                     initialUri = editorRequestUri?.let(Uri::parse),
+                    initialUriRequestId = editorRequestId,
+                    onInitialUriAccepted = { acceptedId ->
+                        val pending = editorRequestUri?.let { EditorOpenRequest(editorRequestId, it) }
+                        editorRequestUri = consumeEditorOpenRequest(pending, acceptedId)?.uri
+                    },
                 )
 
                 ResoundDestination.Multitrack -> TimelineScreen(
@@ -77,6 +86,7 @@ private fun ResoundRoot(container: AppContainer) {
 
                 ResoundDestination.Library -> LibraryScreen(
                     onOpenInEditor = { uri ->
+                        editorRequestId += 1
                         editorRequestUri = uri.toString()
                         destinationName = ResoundDestination.Editor.name
                     },

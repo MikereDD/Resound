@@ -1,6 +1,6 @@
 /*
  * file:    AudioFile.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Lightweight handle to a source audio (or video) file plus the
  *          metadata the editor needs. Populated from MediaStore / SAF.

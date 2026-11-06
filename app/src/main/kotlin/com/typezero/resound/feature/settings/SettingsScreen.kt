@@ -1,6 +1,6 @@
 /*
  * file:    SettingsScreen.kt
- * author:  Mike Redd (Typezer∅)
+ * author:  Typezer∅
  * version: 0.8.0-dev.6
  * desc:    Premium settings and application-information workspace.
  */
@@ -118,7 +118,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 SettingsInfoRow(
                     icon = Icons.Outlined.Folder,
                     title = "Export destination",
-                    value = "Music/Resound",
+                    value = com.typezero.resound.core.io.Outputs.musicDirectoryDisplay,
                 )
                 SettingsDivider()
                 SettingsInfoRow(

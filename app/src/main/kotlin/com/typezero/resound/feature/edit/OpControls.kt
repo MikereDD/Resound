@@ -1,6 +1,6 @@
 /*
  * file:    OpControls.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.3.0
  * desc:    Edit operations and their parameter-collection dialogs. Each op
  *          either runs immediately, opens a dialog here to gather a parameter,
@@ -60,7 +60,8 @@ sealed interface OpParams {
 }
 
 @Composable
-fun OpDialog(op: EditOp, onDismiss: () -> Unit, onConfirm: (OpParams) -> Unit) {
+fun OpDialog(op: EditOp, onDismiss: () -> Unit,
+    convertNamingPreview: @Composable (String) -> Unit = {}, onConfirm: (OpParams) -> Unit) {
     when (op) {
         EditOp.VOLUME -> SliderDialog(op, "Volume", 0f, 3f, 1f, { "${(it * 100).roundToInt()}%" }, onDismiss) {
             onConfirm(OpParams.Volume(it.toDouble()))
@@ -75,7 +76,7 @@ fun OpDialog(op: EditOp, onDismiss: () -> Unit, onConfirm: (OpParams) -> Unit) {
             onConfirm(OpParams.Fade((it * 1000).toLong()))
         }
         EditOp.EQ -> EqDialog(onDismiss, onConfirm)
-        EditOp.CONVERT -> ChoiceDialog("Convert to", listOf("mp3", "m4a", "wav", "flac", "aac", "ogg"), "mp3", onDismiss) {
+        EditOp.CONVERT -> ChoiceDialog("Convert to", listOf("mp3", "m4a", "wav", "flac", "aac", "ogg"), "mp3", onDismiss, preview = convertNamingPreview) {
             onConfirm(OpParams.Convert(it))
         }
         EditOp.COMPRESS -> ChoiceDialog("Bitrate (kbps)", listOf("64", "96", "128", "192", "256"), "128", onDismiss) {
@@ -139,6 +140,7 @@ private fun ChoiceDialog(
     options: List<String>,
     default: String,
     onDismiss: () -> Unit,
+    preview: @Composable (String) -> Unit = {},
     onConfirm: (String) -> Unit,
 ) {
     var sel by remember { mutableStateOf(default) }
@@ -158,6 +160,7 @@ private fun ChoiceDialog(
                         }
                     }
                 }
+                preview(sel)
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(sel) }) { Text("Apply") } },

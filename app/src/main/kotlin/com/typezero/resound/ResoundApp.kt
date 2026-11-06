@@ -1,6 +1,6 @@
 /*
  * file:    ResoundApp.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Application entry; owns the manual DI container.
  */

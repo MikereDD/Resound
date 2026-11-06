@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.typezero.resound.ui.components.ResoundCard
+import com.typezero.resound.core.io.Outputs
 import com.typezero.resound.ui.theme.PanelHi
 import com.typezero.resound.ui.theme.Signal
 import com.typezero.resound.ui.theme.TextLo
@@ -83,7 +84,7 @@ fun LibraryScreen(
         error = null
         runCatching { ResoundLibrary.load(context) }
             .onSuccess { exports = it }
-            .onFailure { error = it.message ?: "Could not read Music/Resound" }
+            .onFailure { error = it.message ?: "Could not read ${Outputs.musicDirectoryDisplay}" }
         loading = false
     }
 
@@ -100,7 +101,7 @@ fun LibraryScreen(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Library", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    if (exports.isEmpty()) "Your Resound exports" else "${exports.size} exports in Music/Resound",
+                    if (exports.isEmpty()) "Your Resound exports" else "${exports.size} exports in ${Outputs.musicDirectoryDisplay}",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextLo,
                 )
@@ -117,7 +118,7 @@ fun LibraryScreen(
             loading -> LoadingCard()
             error != null -> MessageCard(
                 title = "Library unavailable",
-                body = error ?: "Could not read Music/Resound",
+                body = error ?: "Could not read ${Outputs.musicDirectoryDisplay}",
             )
             exports.isEmpty() -> EmptyCard()
             else -> LazyColumn(
@@ -222,7 +223,7 @@ private fun LoadingCard() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-            Text("Scanning Music/Resound…", fontWeight = FontWeight.SemiBold)
+            Text("Scanning ${Outputs.musicDirectoryDisplay}…", fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -234,7 +235,7 @@ private fun PermissionCard(onGrant: () -> Unit) {
             Text("Audio access required", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Tap to allow Resound to display the audio files in Music/Resound.",
+                "Tap to allow Resound to display the audio files in ${Outputs.musicDirectoryDisplay}.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextLo,
             )

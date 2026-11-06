@@ -1,6 +1,6 @@
 /*
  * file:    WaveformView.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.6.0
  * desc:    The editor's signature widget. Draws the downsampled Waveform as a
  *          filled, mirrored shape with a vertical signal-teal gradient, a soft

@@ -1,6 +1,6 @@
 /*
  * file:    AboutDialog.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.8.0-dev.6
  * desc:    About dialog — app version (read from PackageInfo), a one-line
  *          description, links to the repo and changelog, and open-source
@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.typezero.resound.ui.theme.Signal
+import com.typezero.resound.core.io.Outputs
 import com.typezero.resound.ui.theme.TextLo
 
 private const val REPO_URL =
@@ -64,7 +65,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 Text("Version $version", style = MaterialTheme.typography.bodySmall, color = TextLo)
                 Text(
                     "A personal, ad-free audio editor and multitrack mixer — trim, mix, record, " +
-                        "and set ringtones. Edits save to Music/Resound.",
+                        "and set ringtones. Edits save to ${Outputs.musicDirectoryDisplay}.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(

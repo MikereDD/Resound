@@ -1,8 +1,23 @@
 # Releasing Resound
 
-Resound is distributed as a signed sideload APK through **GitHub Releases**.
-The Git repository contains source, release metadata, and the updater manifest —
-never APK binaries.
+Resound is distributed as a signed sideload APK through **GitHub Releases**:
+https://github.com/MikereDD/Resound/releases
+
+The Git repository contains source and release metadata — never APK binaries.
+The updater manifest (`releases/update.json`) is added with the first stable
+release.
+
+Only the production package (`com.typezero.resound`, release-signed) is
+published. DEV TEST builds (`com.typezero.resound.devtest`, debug-signed) are for
+local device testing and are never attached to a release.
+
+## Development pre-releases
+
+- Tag: `v<versionName>`, for example `v0.8.0-dev.10`.
+- Asset: `Resound-v<versionName>.apk`, for example `Resound-v0.8.0-dev.10.apk`,
+  with its SHA-256 in the release notes.
+- Mark the GitHub Release as a **pre-release**.
+- Do not update `releases/update.json` for development pre-releases.
 
 ## Release checklist
 
@@ -28,11 +43,9 @@ The repository `.gitignore` should continue to exclude `*.apk`.
 
 ## Update manifest
 
-The production manifest is:
-
-`releases/update.json`
-
-A typical release entry looks like:
+The updater reads `releases/update.json` from the `main` branch; see
+[`releases/update.example.json`](../releases/update.example.json). A typical
+release entry looks like:
 
 ```json
 {

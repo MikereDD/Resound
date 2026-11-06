@@ -1,6 +1,6 @@
 /*
  * file:    Recorder.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.4.0
  * desc:    Voice recorder. AndroidRecorder wraps MediaRecorder for one-tap
  *          capture to an AAC/m4a file. The recorded file is loaded straight

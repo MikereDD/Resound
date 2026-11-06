@@ -1,6 +1,6 @@
 /*
  * file:    FFmpegRunner.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Thin abstraction over an FFmpeg session. The whole "rich feature
  *          list" (cut, mix, fade, pitch, EQ, convert...) is built by handing

@@ -1,6 +1,6 @@
 /*
  * file:    Ringtones.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.4.0
  * desc:    Sets an audio file as the default ringtone. Inserts a copy into the
  *          MediaStore Ringtones collection (IS_RINGTONE=1), then points the

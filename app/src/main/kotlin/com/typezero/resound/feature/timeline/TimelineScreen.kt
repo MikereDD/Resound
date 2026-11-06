@@ -1,6 +1,6 @@
 /*
  * file:    TimelineScreen.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.8.0-dev.4
  * desc:    Premium multitrack workspace with a shared ruler, compact track
  *          controls, zoomable lanes, draggable/trim-capable clips, and a
@@ -44,6 +44,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -73,6 +75,9 @@ import com.typezero.resound.core.audio.AudioFiles
 import com.typezero.resound.core.audio.WaveformExtractor
 import com.typezero.resound.core.ffmpeg.FFmpegRunner
 import com.typezero.resound.core.io.Outputs
+import com.typezero.resound.core.io.NamingPreferences
+import com.typezero.resound.core.io.NamingRequest
+import com.typezero.resound.ui.components.NamingPanel
 import com.typezero.resound.feature.effects.Effects
 import com.typezero.resound.ui.components.ResoundCard
 import com.typezero.resound.ui.theme.Amber
@@ -109,6 +114,10 @@ fun TimelineScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val namingPreferences = remember(context) { NamingPreferences.forContext(context) }
+    val namingPatterns by namingPreferences.state.collectAsState()
+    val namingPreferenceNotice by namingPreferences.notice.collectAsState()
+    LaunchedEffect(namingPreferences) { namingPreferences.initialize() }
     val density = LocalDensity.current
 
     androidx.activity.compose.BackHandler { onBack() }
@@ -173,6 +182,7 @@ fun TimelineScreen(
 
     fun exportMix() {
         if (!editingEnabled) return
+        val exportNaming = NamingRequest(namingPatterns.exports)
         scope.launch {
             val owned = OperationFiles()
             try {
@@ -201,8 +211,8 @@ fun TimelineScreen(
                 val temp = allocateOwnedTemp(context, "mix", "m4a", owned)
                 val result = ffmpeg.run(Effects.mixTimeline(inputs, temp.absolutePath), 0L, owned)
                 status = if (result.isSuccess) {
-                    val published = runCommitted { Outputs.publishToMusic(context, temp, Outputs.exportName("mix", "m4a"), "m4a") }
-                    "Mix saved to ${published.displayPath}"
+                    val published = runCommitted { Outputs.publishNamedToMusic(context, temp, "mix", "m4a", exportNaming) }
+                    "Mix saved to ${published.savedDescription}"
                 } else {
                     "Mix failed (rc=${result.returnCode})"
                 }
@@ -226,6 +236,13 @@ fun TimelineScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             MultitrackHeader(trackCount = tracks.size, clipCount = tracks.sumOf { it.clips.size })
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                NamingPanel("Export new copy name", namingPatterns.exports,
+                    enabled = editingEnabled, ext = "m4a",
+                    onChange = { namingPreferences.update(exports = it) })
+                namingPreferenceNotice?.let { Text(it, color = Amber) }
+            }
 
             ResoundCard(modifier = Modifier.fillMaxWidth()) {
                 Column(

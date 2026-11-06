@@ -1,6 +1,6 @@
 /*
  * file:    WaveformExtractor.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Decodes an audio source to a downsampled peak array for rendering.
  *          One bucket = (min, max) sample amplitude over a window, so the

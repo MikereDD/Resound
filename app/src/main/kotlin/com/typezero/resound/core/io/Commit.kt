@@ -45,7 +45,8 @@ suspend fun publishDraft(
     context: android.content.Context,
     store: DraftStore,
     draft: java.io.File,
-): Outputs.Published = runCommitted { publishDraftBlocking(context, store, draft) }
+    naming: NamingRequest? = null,
+): Outputs.Published = runCommitted { publishDraftBlocking(context, store, draft, naming) }
 
 /**
  * Explicit Save of an existing recovery draft. A stale recovery row (an earlier Save already
@@ -68,12 +69,13 @@ private fun publishDraftBlocking(
     context: android.content.Context,
     store: DraftStore,
     draft: java.io.File,
+    naming: NamingRequest? = null,
 ): Outputs.Published {
     val copy = Outputs.newTempFile(context, "recording", "m4a")
     try {
         draft.copyTo(copy, overwrite = true)
         return publishAndTrack(store, draft, { p: Outputs.Published -> p.uri.toString() }) {
-            Outputs.publishToMusic(context, copy, Outputs.exportName("recording", "m4a"), "m4a")
+            Outputs.publishNamedToMusic(context, copy, "recording", "m4a", naming)
         }
     } finally {
         copy.delete()

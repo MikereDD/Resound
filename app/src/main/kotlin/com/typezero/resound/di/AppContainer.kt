@@ -1,6 +1,6 @@
 /*
  * file:    AppContainer.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.3.1
  * desc:    Manual DI container (no Hilt/Koin per repo convention). Holds the
  *          shared singletons feature screens pull from.

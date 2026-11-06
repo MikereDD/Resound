@@ -1,6 +1,6 @@
 /*
  * file:    TimelineModel.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.5.0
  * desc:    Multitrack timeline model. A Timeline holds Tracks; each Track holds
  *          Clips positioned along a shared time axis. v0.5.0 clips span their

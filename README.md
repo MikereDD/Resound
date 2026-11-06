@@ -60,6 +60,7 @@ shell.
 - live playhead and selection playback
 - open audio or supported video through Android's system picker
 - reopen exported audio directly from the Library
+- Close audio returns to a compact start screen focused on Record and Open
 
 ### Audio tools
 
@@ -72,10 +73,13 @@ shared `Music/Resound` collection.
 
 ### Recording
 
-- one-tap voice recording
-- AAC/M4A output
-- recorded audio can load directly into the Editor
-- recordings are retained in the Resound output library
+- one-tap voice recording with AAC/M4A output
+- recordings publish to the Resound output library when you stop
+- optional filename with Date, Time and Duration options and a live preview
+  (Android 10+; empty means automatic naming)
+- Recent Recording shortcut to reopen the last recording
+- unfinished recordings are kept as recovery drafts that can be opened,
+  saved or discarded
 
 ### Multitrack
 
@@ -114,12 +118,11 @@ There are no silent updates and no automatic downgrades.
 
 ## Project status
 
-**Current development source:** `0.8.0-dev.6` (`versionCode 19`)
+**Current development source:** `0.8.0-dev.10` (`versionCode 23`)
 
-The core editing, recording, playback, ringtone, multitrack, Library, and updater
-workflows are implemented and have undergone real-device testing. The current
-work is release-readiness testing for the first standalone GitHub Release in the
-0.8 line.
+The 0.8 line is in development. Development builds are published as GitHub
+**pre-releases**; they are tested on a real device, but not every workflow is
+validated on every build. See [`CHANGELOG.md`](CHANGELOG.md) for details.
 
 ## Releases
 
@@ -127,11 +130,26 @@ Signed APKs are published **only through GitHub Releases**:
 
 **https://github.com/MikereDD/Resound/releases**
 
-APK binaries are intentionally not stored in the Git repository. The updater
-manifest remains in source control while each release APK and its checksum are
-attached to the corresponding GitHub Release.
+APK binaries are intentionally not stored in the Git repository. Each release
+APK and its SHA-256 checksum are attached to the matching GitHub Release.
 
-Resound currently targets **arm64-v8a** devices and is intended for sideloading.
+Resound currently targets **arm64-v8a** devices and is intended for sideloading:
+download the APK from the release page and allow your browser or file manager
+to install unknown apps when Android asks.
+
+### Production and DEV TEST builds
+
+| | Production | DEV TEST |
+|---|---|---|
+| App name | Resound | Resound DEV TEST |
+| Package | `com.typezero.resound` | `com.typezero.resound.devtest` |
+| Output folder | `Music/Resound` | `Music/Resound DEV TEST` |
+| Signing | release key | Android debug key |
+| In-app updater, ringtone | enabled | disabled |
+| Published on GitHub Releases | yes | no — local testing only |
+
+The two packages install side by side and never share data. A DEV TEST APK
+cannot update or replace a production installation.
 
 ## Build from source
 
@@ -148,6 +166,14 @@ Build a debug APK with a locally installed Gradle:
 ```bash
 gradle :app:assembleDebug
 ```
+
+Build the isolated DEV TEST variant instead:
+
+```bash
+gradle :app:assembleDevtest
+```
+
+Signing configuration for public release APKs is not stored in the repository.
 
 Or generate a local wrapper if preferred:
 
@@ -173,11 +199,10 @@ FFmpeg and the wrapper remain under their own applicable licenses. See
 
 ## Release and update model
 
-The production updater manifest lives at:
-
-```text
-releases/update.json
-```
+The in-app updater reads `releases/update.json` from the `main` branch. That
+file is added with the first stable release; until then, Check for updates
+shows an update-check error. Development pre-releases are installed manually
+and are not offered through the updater.
 
 Release APKs do **not** live in the repository. A release manifest points to the
 signed APK attached to the matching GitHub Release, for example:

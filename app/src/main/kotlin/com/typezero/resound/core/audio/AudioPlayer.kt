@@ -1,6 +1,6 @@
 /*
  * file:    AudioPlayer.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.4.1
  * desc:    Lightweight MediaPlayer wrapper for in-app preview of the loaded
  *          file. Plays from a given position; the editor polls currentMs to

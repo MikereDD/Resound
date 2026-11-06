@@ -1,6 +1,6 @@
 /*
  * file:    MediaCodecWaveformExtractor.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.2.1
  * desc:    Real waveform extraction. Decodes the source to PCM with
  *          MediaExtractor + MediaCodec and folds the samples into

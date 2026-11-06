@@ -1,6 +1,6 @@
 /*
  * file:    AudioFiles.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.2.0
  * desc:    Bridges Android's storage model to the editor. SAF gives us a
  *          content:// Uri; FFmpeg needs a real filesystem path. This:

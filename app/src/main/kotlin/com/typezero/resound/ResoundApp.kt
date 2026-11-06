@@ -18,6 +18,8 @@ class ResoundApp : Application() {
         super.onCreate()
         // Startup contract: single process, nothing native has run yet. Must precede the container.
         com.typezero.resound.core.io.ScratchSweeper.sweepAtStartup(cacheDir)
+        // A staged update from an earlier process is abandoned or already installed.
+        com.typezero.resound.core.update.UpdateStaging.clear(com.typezero.resound.core.update.UpdateStaging.dir(cacheDir))
         if (BuildConfig.IS_DEVTEST) {
             com.typezero.resound.core.DevTrace.sink = { android.util.Log.i("ResoundTrace", "${System.nanoTime() / 1_000_000} ${Thread.currentThread().name} $it") }
             android.os.StrictMode.setThreadPolicy(

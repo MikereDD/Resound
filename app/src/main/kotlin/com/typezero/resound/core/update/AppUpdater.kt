@@ -11,26 +11,25 @@ import androidx.core.content.FileProvider
 import com.typezero.resound.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** Secure, user-initiated updater for the sideloaded APK. */
+/**
+ * Secure, user-initiated updater for the sideloaded APK, following the Typezer∅ Android updater
+ * standard: schema-2 manifest from a pinned origin, local trust and eligibility checks, exact
+ * asset download, detached-signature and APK-identity verification, then Android's installer.
+ */
 class AppUpdater(private val context: Context) {
 
-    data class Release(
-        val versionCode: Long,
-        val versionName: String,
-        val apkUrl: String,
-        val sha256: String,
-        val notes: String,
-    )
-
     sealed interface CheckResult {
-        data class Available(val release: Release) : CheckResult
+        data class Available(val offer: UpdatePolicy.Offer) : CheckResult
         data class Current(val versionName: String) : CheckResult
+        data class NotPublished(val message: String) : CheckResult
         data class Failed(val message: String) : CheckResult
     }
 
@@ -39,77 +38,56 @@ class AppUpdater(private val context: Context) {
         data class Failed(val message: String) : DownloadResult
     }
 
+    private class HttpStatusException(val code: Int) : IllegalStateException("Server returned HTTP $code")
+
+    private val stagingDir: File get() = UpdateStaging.dir(context.cacheDir)
+
     suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
         val channel = UpdatePolicy.channel(BuildConfig.IS_DEVTEST, BuildConfig.VERSION_NAME)
             ?: return@withContext CheckResult.Failed("Updates are disabled in the DEV TEST build.")
         runCatching {
+            require(context.packageName == UpdateTrust.PACKAGE_ID) { "Updates are only available in Resound" }
             val manifestUrl = UpdatePolicy.manifestUrl(
                 channel, BuildConfig.UPDATE_MANIFEST_URL, BuildConfig.UPDATE_DEV_MANIFEST_URL,
             )
-            UpdatePolicy.requireTrustedHttps(manifestUrl)
-            val json = JSONObject(httpGetText(manifestUrl))
-            val release = Release(
-                versionCode = json.getLong("versionCode"),
-                versionName = json.getString("versionName").trim(),
-                apkUrl = json.getString("apkUrl").trim(),
-                sha256 = json.getString("sha256").trim().lowercase(),
-                notes = json.optString("notes", ""),
-            )
-            require(release.versionCode > 0) { "Invalid update version code" }
-            require(release.versionName.isNotBlank()) { "Invalid update version name" }
-            require(release.sha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid SHA-256 in update manifest" }
-            UpdatePolicy.requireTrustedHttps(release.apkUrl)
-
-            val installed = installedPackageInfo()
-            if (release.versionCode > installed.longVersionCodeCompat()) {
-                CheckResult.Available(release)
-            } else {
-                CheckResult.Current(installed.versionName ?: "current")
+            val text = try {
+                httpGetText(manifestUrl, ReleaseManifest.MAX_BYTES)
+            } catch (e: HttpStatusException) {
+                if (e.code != 404) throw e
+                return@withContext CheckResult.NotPublished("No ${channel.label} update has been published yet.")
+            }
+            val manifest = ReleaseManifest.parse(text)
+            when (val offer = UpdatePolicy.selectUpdate(manifest, channel, BuildConfig.VERSION_NAME, UpdateTrust.anchors)) {
+                null -> CheckResult.Current(BuildConfig.VERSION_NAME)
+                else -> CheckResult.Available(offer)
             }
         }.getOrElse { CheckResult.Failed(it.message ?: "Update check failed") }
     }
 
-    suspend fun download(release: Release, onProgress: (Int) -> Unit): DownloadResult =
+    suspend fun download(offer: UpdatePolicy.Offer, onProgress: (Int) -> Unit): DownloadResult =
         withContext(Dispatchers.IO) {
+            val dir = stagingDir.apply { mkdirs() }
+            UpdateStaging.clear(dir)
             runCatching {
-                UpdatePolicy.requireTrustedHttps(release.apkUrl)
-                val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-                dir.listFiles()?.forEach { it.delete() }
-                val partial = File(dir, "Resound-${release.versionName}.apk.part")
-                val apk = File(dir, "Resound-${release.versionName}.apk")
-
-                val connection = openConnection(release.apkUrl)
-                try {
-                    val total = connection.contentLengthLong
-                    connection.inputStream.use { input ->
-                        partial.outputStream().use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            var copied = 0L
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read < 0) break
-                                output.write(buffer, 0, read)
-                                copied += read
-                                if (total > 0) onProgress(((copied * 100L) / total).toInt().coerceIn(0, 100))
-                            }
-                        }
-                    }
-                } finally {
-                    connection.disconnect()
-                }
-
-                val actualHash = sha256(partial)
-                require(actualHash.equals(release.sha256, ignoreCase = true)) {
-                    "Downloaded APK failed SHA-256 verification"
-                }
-                verifyArchiveIdentity(partial, release)
-                require(partial.renameTo(apk)) { "Could not finalize downloaded APK" }
+                val asset = offer.asset
+                val signature = File(dir, asset.signature.fileName)
+                val apk = File(dir, asset.fileName)
+                downloadTo(asset.signature.downloadUrl, signature, asset.signature.size) {}
+                downloadTo(asset.downloadUrl, apk, asset.size, onProgress)
+                ReleaseVerifier.verify(apk, signature, asset, UpdateTrust.anchors)
+                verifyArchiveIdentity(apk, offer.manifest.version)
                 onProgress(100)
                 DownloadResult.Ready(apk)
             }.getOrElse { error ->
+                UpdateStaging.clear(dir)
                 DownloadResult.Failed(error.message ?: "Update download failed")
             }
         }
+
+    /** Deletes staged downloads; called when the update dialog closes (including after a cancelled install). */
+    fun discardStaged() {
+        UpdateStaging.clear(stagingDir)
+    }
 
     fun canRequestInstalls(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
@@ -127,17 +105,22 @@ class AppUpdater(private val context: Context) {
         }
     }
 
-    private fun verifyArchiveIdentity(apk: File, release: Release) {
+    private fun verifyArchiveIdentity(apk: File, manifestVersion: String) {
         val archive = archivePackageInfo(apk)
             ?: error("Android could not read the downloaded APK")
         val installed = installedPackageInfo()
         UpdatePolicy.requireValidUpdate(
-            expectedPackage = context.packageName,
-            manifestVersionCode = release.versionCode,
+            expectedPackage = UpdateTrust.PACKAGE_ID,
+            manifestVersion = manifestVersion,
             installedVersionCode = installed.longVersionCodeCompat(),
             installedSigners = signerDigests(installed),
-            releaseCertSha256 = BuildConfig.UPDATE_RELEASE_CERT_SHA256,
-            archive = UpdatePolicy.ApkIdentity(archive.packageName, archive.longVersionCodeCompat(), signerDigests(archive)),
+            releaseCertSha256 = UpdateTrust.anchors.apkCertSha256,
+            archive = UpdatePolicy.ApkIdentity(
+                archive.packageName,
+                archive.versionName.orEmpty(),
+                archive.longVersionCodeCompat(),
+                signerDigests(archive),
+            ),
         )
     }
 
@@ -194,12 +177,43 @@ class AppUpdater(private val context: Context) {
             versionCode.toLong()
         }
 
-    private fun httpGetText(url: String): String {
+    private fun httpGetText(url: String, maxBytes: Int): String {
         val connection = openConnection(url)
         return try {
-            connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val buffer = ByteArrayOutputStream()
+            connection.inputStream.use { copyLimited(it, buffer, maxBytes.toLong()) {} }
+            buffer.toString(Charsets.UTF_8.name())
         } finally {
             connection.disconnect()
+        }
+    }
+
+    /** Downloads exactly [expectedSize] bytes at most; a larger response is rejected while streaming. */
+    private fun downloadTo(url: String, target: File, expectedSize: Long, onProgress: (Int) -> Unit) {
+        val connection = openConnection(url)
+        try {
+            connection.inputStream.use { input ->
+                target.outputStream().use { output ->
+                    copyLimited(input, output, expectedSize) { copied ->
+                        onProgress(((copied * 100L) / expectedSize).toInt().coerceIn(0, 100))
+                    }
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun copyLimited(input: InputStream, output: OutputStream, limit: Long, onCopied: (Long) -> Unit) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var copied = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            copied += read
+            require(copied <= limit) { "Download is larger than the release metadata allows" }
+            output.write(buffer, 0, read)
+            onCopied(copied)
         }
     }
 
@@ -213,7 +227,7 @@ class AppUpdater(private val context: Context) {
                 readTimeout = 30_000
                 instanceFollowRedirects = false
                 requestMethod = "GET"
-                setRequestProperty("Accept", "application/json, application/vnd.android.package-archive")
+                setRequestProperty("Accept", "application/json, application/octet-stream, application/vnd.android.package-archive")
                 setRequestProperty("User-Agent", "Resound/${BuildConfig.VERSION_NAME}")
                 connect()
             }
@@ -227,24 +241,11 @@ class AppUpdater(private val context: Context) {
                 }
                 else -> {
                     connection.disconnect()
-                    error("Server returned HTTP $code")
+                    throw HttpStatusException(code)
                 }
             }
         }
         error("Too many update redirects")
-    }
-
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
-        }
-        return bytesToHex(digest.digest())
     }
 
     private fun bytesToHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }

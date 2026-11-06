@@ -11,6 +11,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.typezero.resound.core.update.AppUpdater
+import com.typezero.resound.core.update.UpdatePolicy
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -31,7 +33,7 @@ fun UpdateDialog(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var status by remember { mutableStateOf("Checking for updates…") }
-    var release by remember { mutableStateOf<AppUpdater.Release?>(null) }
+    var offer by remember { mutableStateOf<UpdatePolicy.Offer?>(null) }
     var apk by remember { mutableStateOf<File?>(null) }
     var progress by remember { mutableIntStateOf(-1) }
     var working by remember { mutableStateOf(true) }
@@ -55,13 +57,17 @@ fun UpdateDialog(onDismiss: () -> Unit) {
         }
     }
 
+    // Closing the dialog abandons any staged download, including one whose install was cancelled.
+    DisposableEffect(Unit) { onDispose { updater.discardStaged() } }
+
     LaunchedEffect(Unit) {
         when (val result = updater.check()) {
             is AppUpdater.CheckResult.Available -> {
-                release = result.release
-                status = "Resound ${result.release.versionName} is available."
+                offer = result.offer
+                status = "Resound ${result.offer.manifest.version} is available."
             }
             is AppUpdater.CheckResult.Current -> status = "You have the latest version (${result.versionName})."
+            is AppUpdater.CheckResult.NotPublished -> status = result.message
             is AppUpdater.CheckResult.Failed -> status = result.message
         }
         working = false
@@ -73,21 +79,21 @@ fun UpdateDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(status)
-                release?.notes?.takeIf { it.isNotBlank() }?.let { Text(it) }
+                offer?.manifest?.mandatoryReason?.let { Text("Required update: $it") }
                 if (progress >= 0) LinearProgressIndicator(progress = { progress / 100f })
             }
         },
         confirmButton = {
             when {
                 apk != null -> TextButton(onClick = { install(apk!!) }) { Text("Install") }
-                release != null -> TextButton(
+                offer != null -> TextButton(
                     enabled = !working,
                     onClick = {
-                        val selected = release ?: return@TextButton
+                        val selected = offer ?: return@TextButton
                         scope.launch {
                             working = true
                             progress = 0
-                            status = "Downloading Resound ${selected.versionName}…"
+                            status = "Downloading Resound ${selected.manifest.version}…"
                             when (val result = updater.download(selected) { value -> mainHandler.post { progress = value } }) {
                                 is AppUpdater.DownloadResult.Ready -> {
                                     apk = result.apk

@@ -8,10 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** Development/stable OTA channels, trusted redirects and downloaded-APK identity (dev.11). */
+/** Development/stable OTA channels, trusted redirects and downloaded-APK identity. */
 class UpdatePolicyTest {
     private val stable = "https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update.json"
-    private val dev = "https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update-dev.json"
+    private val dev = "https://raw.githubusercontent.com/MikereDD/Resound/main/releases/development/release-manifest.json"
     private val cert = "3aaba0c794a652511c65272f7cf9210432a23069f5a27bd2d700c06891bed499"
     private val debugCert = "40e05cb6ec3e2ebebea336b359cf96b2d9c19361df84d99b79e211ec5203e778"
 
@@ -61,15 +61,16 @@ class UpdatePolicyTest {
         assertEquals(5, UpdatePolicy.MAX_REDIRECTS)
     }
 
-    private fun check(archive: UpdatePolicy.ApkIdentity, installedCode: Long = 23, installedSigners: Set<String> = setOf(cert)) =
-        UpdatePolicy.requireValidUpdate("com.typezero.resound", 24, installedCode, installedSigners, cert, archive)
+    private fun check(archive: UpdatePolicy.ApkIdentity, installedCode: Long = 24, installedSigners: Set<String> = setOf(cert)) =
+        UpdatePolicy.requireValidUpdate("com.typezero.resound", "0.8.0-dev.12", installedCode, installedSigners, cert, archive)
 
     @Test fun downloadedApkMustBeTheAnnouncedNewerReleaseSignedResound() {
-        val good = UpdatePolicy.ApkIdentity("com.typezero.resound", 24, setOf(cert))
+        val good = UpdatePolicy.ApkIdentity("com.typezero.resound", "0.8.0-dev.12", 25, setOf(cert))
         check(good)
         rejects("package name") { check(good.copy(packageName = "com.typezero.resound.devtest")) }
-        rejects("does not match the update manifest") { check(good.copy(versionCode = 25)) }
-        rejects("not newer") { check(good, installedCode = 24) }
+        rejects("does not match the release manifest") { check(good.copy(versionName = "0.8.0-dev.13")) }
+        rejects("does not match the release manifest") { check(good.copy(versionName = "")) }
+        rejects("not newer") { check(good, installedCode = 25) }
         rejects("not newer") { check(good, installedCode = 30) }
         rejects("release certificate") { check(good.copy(signers = setOf(debugCert))) }
         rejects("release certificate") { check(good.copy(signers = setOf(cert, debugCert))) }

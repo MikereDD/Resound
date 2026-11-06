@@ -1,12 +1,15 @@
 # Changelog
 
-## 0.8.0-dev.11 — Development update channel
+## 0.8.0-dev.11 — Standards-compliant development updates
 
 - Advance the development build to versionCode 24.
-- Add a development update channel: release-signed `-dev` builds check `releases/update-dev.json`; stable builds keep `releases/update.json`. DEV TEST builds never check for updates.
+- Add a development update channel: release-signed `-dev` builds check `releases/development/release-manifest.json`; stable builds keep `releases/update.json`. DEV TEST builds never check for updates.
+- Adopt the Typezer∅ release manifest (schema revision 2) with strict parsing, updater protocol 1, numeric version ordering, channel and `minimumVersion` checks.
+- Verify a detached RSA-SHA256 release signature against the pinned Resound release key, plus exact file names, sizes and SHA-256 checksums, before handing an update to Android's installer.
 - Fix update downloads from GitHub Releases: follow up to five redirects, each only to an explicitly trusted HTTPS host (adds `release-assets.githubusercontent.com`).
-- Require the downloaded APK to be `com.typezero.resound`, to carry the manifest's version code and be newer than the installed build, and to be signed only with the Resound release certificate.
-- Add focused host tests for channels, trusted redirects and update identity.
+- Require the downloaded APK to be `com.typezero.resound`, to carry the announced version with a newer version code, and to be signed only with the Resound release certificate.
+- Remove staged update downloads after a failed download, when the update dialog closes and at startup.
+- Add focused host tests for manifests, version ordering, channels, trusted redirects, tamper rejection and update identity.
 
 ## 0.8.0-dev.10 — Close audio, compact Editor and filename options
 

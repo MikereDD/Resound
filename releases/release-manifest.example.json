@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 2,
+  "appId": "resound",
+  "displayName": "Resound",
+  "platform": "android",
+  "architecture": "android-arm64-v8a",
+  "channel": "development",
+  "version": "0.8.0-dev.12",
+  "publishedAt": "2026-11-07T12:00:00Z",
+  "minimumVersion": "0.8.0-dev.11",
+  "updaterProtocolVersion": 1,
+  "minimumUpdaterProtocolVersion": 1,
+  "mandatory": false,
+  "releaseNotesUrl": "https://github.com/MikereDD/Resound/releases/tag/v0.8.0-dev.12",
+  "changelogUrl": "CHANGELOG.md",
+  "assets": [
+    {
+      "fileName": "Resound-v0.8.0-dev.12.apk",
+      "downloadUrl": "https://github.com/MikereDD/Resound/releases/download/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk",
+      "size": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "signature": {
+        "algorithm": "rsa-sha256",
+        "fileName": "Resound-v0.8.0-dev.12.apk.sig",
+        "downloadUrl": "https://github.com/MikereDD/Resound/releases/download/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk.sig",
+        "size": 512,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "keyId": "typezero-resound-release-01",
+        "publicKeySha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "packageId": "com.typezero.resound",
+      "signingCertificateSha256": "3aaba0c794a652511c65272f7cf9210432a23069f5a27bd2d700c06891bed499"
+    }
+  ],
+  "source": {
+    "repositoryUrl": "https://github.com/MikereDD/Resound",
+    "tag": "v0.8.0-dev.12",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "rollback": {
+    "supported": false,
+    "retainVersions": 0
+  }
+}

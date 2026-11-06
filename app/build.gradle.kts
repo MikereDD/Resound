@@ -24,7 +24,7 @@ android {
         buildConfigField(
             "String",
             "UPDATE_DEV_MANIFEST_URL",
-            "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update-dev.json\"",
+            "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/development/release-manifest.json\"",
         )
         // Public SHA-256 of the Resound release signing certificate; updates must carry exactly it.
         buildConfigField(
@@ -96,6 +96,8 @@ dependencies {
 
     // Host-side unit tests (JUnit 4.13.2, already in the local Gradle cache).
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for host tests of the update-manifest parser (Android provides it at runtime).
+    testImplementation("org.json:json:20250517")
 
     // ── FFmpeg engine ───────────────────────────────────────────────────────
     // ffmpeg-kit was retired by arthenica and pulled from Maven Central. This is

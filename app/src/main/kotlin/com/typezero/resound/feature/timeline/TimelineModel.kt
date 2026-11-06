@@ -1,6 +1,6 @@
 /*
  * file:    TimelineModel.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.5.0
  * desc:    Multitrack timeline model. A Timeline holds Tracks; each Track holds
  *          Clips positioned along a shared time axis. v0.5.0 clips span their
@@ -18,6 +18,8 @@ data class Clip(
     val startMs: Long = 0L,
     val sourceInMs: Long = 0L,
     val sourceOutMs: Long = source.durationMs,
+    /** Missing/revoked references stay as placeholders instead of losing user edits. */
+    val sourceAvailable: Boolean = true,
 ) {
     val lengthMs: Long get() = (sourceOutMs - sourceInMs).coerceAtLeast(0L)
     val endMs: Long get() = startMs + lengthMs

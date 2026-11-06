@@ -1,6 +1,6 @@
 /*
  * file:    Theme.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.8.0-dev.1
  * desc:    Resound's premium visual system — a darkroom for sound. Deep ink
  *          surfaces, signal-teal interaction states, restrained amber live

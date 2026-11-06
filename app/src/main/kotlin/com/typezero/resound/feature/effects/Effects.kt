@@ -1,6 +1,6 @@
 /*
  * file:    Effects.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Pure builders that turn an edit intent into an FFmpeg argument list.
  *          No Android/FFmpeg deps here on purpose — easy to unit test, and the

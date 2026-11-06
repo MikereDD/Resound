@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.8.0-dev.10 — Close audio, compact Editor and filename options
+
+- Advance the development build to versionCode 23.
+
+### Filename options
+
+- Simplify the optional naming panel: a filename field (empty = automatic), a collapsible Filename options section with Date, Time and Duration checkboxes (plus Trim range on Editor exports), a live preview with labelled example values, and Use automatic naming. Checkboxes add or remove the existing tokens without duplicating them or discarding typed text, and follow manually typed tokens.
+- Remove the Format option. A trailing `$FORMAT` in saved patterns is no longer repeated before the real file extension (`take_$FORMAT` saves as `take.m4a`); saved patterns are kept unchanged.
+
+### Compact empty Editor (P3)
+
+- With no audio loaded, hide the waveform, transport, tools and export panels and show full-width Record and Open audio actions, keeping status, recording naming, Recent Recording and recovery cards. Loading audio restores the full workspace; Close audio returns to the compact screen.
+
+### Initial publication naming (P2)
+
+- Add optional collapsed recording-name and export-new-copy panels on API 29+. Empty patterns keep the existing automatic timestamp/random naming; recovery Save and API 26–28 retain automatic naming and the existing legacy publication path.
+- Share literal/token validation and preview for `$DATE`, `$TIME`, `$DURATION`, `$FORMAT` and real Trim-only `$TRIM` ranges. Freeze recording choices/local time before capture and export choices/time before processing. Resolve duration from completed output metadata; unavailable/invalid values fall back nonfatally to automatic naming. Convert previews follow the selected output extension.
+- Persist recording/export preferences with platform SharedPreferences on serialized application-owned IO; preference loading never blocks Record or Stop. No rename, relocation, draft/receipt schema, capture-format or navigation changes.
+- Serialize participating Resound API 29+ publications from insert through write/finalization/readback or failure cleanup. This is a Resound-controlled concurrency contract, not exclusion against other applications/providers. Read the provider-assigned filename/path after finalization; metadata-read failure keeps published audio, reports an unknown filename and cannot substitute a requested name into Recent. Original-byte receipt verification remains independent.
+- Add focused host naming, preference ordering/restart and bounded production-gate regressions. Android/Compose/provider behavior remains unverified without device testing; no version bump, APK or device work.
+
+### Close audio (P1)
+
+- Add a labeled Close audio action for a loaded, idle Editor source. Reserve the Editor against recording/publication/other busy work, revoke preview readiness, and await the existing owned playback retirement before clearing source, waveform, selection and playhead. Successful close returns to the top with Open, Record and any Recent shortcut available.
+- Preserve published audio, recovery drafts, receipts and Recent references. Cancellation, retirement timeout or native cleanup failure must not clear the loaded source; failures keep readable inline feedback. No native ownership, recovery, capture or navigation architecture changes.
+- Consume Library open requests once at load admission using request identities. Accepted requests cannot replay after Close or tab navigation; stale acknowledgements cannot consume a newer same-file selection. Admission is not a claim of decode/playback success.
+- Add focused host regressions for busy guards, retirement ordering/failure/cancellation, existing owned native release, reopening after retirement and one-shot/stale Library requests. Compose layout, provider behavior and interactive audio/device validation remain unverified; no version bump or APK/device work.
+
+### Unavailable Recent Recording feedback
+
+- Keep failed Recent Reopen feedback on the card as a readable “File unavailable” state with moved/deleted/access guidance, Retry and Clear Recent instead of leaving an unchanged Reopen action. The notice remains until explicit success, clearing, or a new successful recording during the current app process; no background scan or media-health claim is added.
+- Clear Recent removes only the app-owned recent reference on IO, retaining all audio and recovery drafts. Clearing persists across restart; stale callbacks and older in-flight metadata cannot restore the cleared shortcut. Failed removal keeps the card with readable retry feedback.
+- Add focused host regressions for missing/denied references, successful retry, reference-only clearing/restart, stale work, cancellation and clear failure. No recording/publication/recovery format changes; device validation remains pending.
+
+
+## 0.8.0-dev.9 — Recent Recording
+
+- Advance the development build to versionCode 22 for controlled validation using the existing isolated DEV TEST package.
+
+- Remember the published location of the last successfully stopped and verified recording in a small app-private atomic reference. Failed/cancelled or untracked publication keeps the previous reference; a shortcut-write failure is reported separately from successful audio publication.
+- Show a Recent Recording card when the Editor is idle with no source loaded, with completed date/time, name and known duration/format/channel details. Reopen uses the existing metadata, waveform and preview pipeline; unavailable media keeps its reference for retry and never earns a false success from path existence alone.
+- Keep Recent Recording separate from Unsaved Recordings recovery. No audio duplicates, format changes, deletion, migration, continuous scan or automatic overwrite. Omit illustrative waveforms and defer History because the current Library lists all exports without a recording-history filter.
+- Derive Editor, Settings, Library and About destination labels from the existing variant output folder without changing actual publication paths.
+- Add focused host regressions for persistence/restart, publication outcomes, cancellation/ordering, reference bounds, Reopen readiness and production/devtest destination labels. Interactive recording, provider/metadata and Reopen workflows require separate manual device validation.
+
+## 0.8.0-dev.8 — recording-recovery health
+
+- Advance the development build to versionCode 21 for controlled validation using the existing isolated DEV TEST package.
+
+- Label recovery drafts Unverified until checked. Explicit Open/Save recheck an admitted, read-only local file on IO for an audio track, positive duration and a bounded first encoded sample; metadata/sample inspection alone never claims playback or full-file integrity.
+- Keep apparently damaged/incomplete drafts and the current Editor source when Open finds no usable media. Only a ready preview with a real, nonempty decoded waveform earns “Playable preview — last check”; readiness/preparation failure or later player failure revokes that label.
+- Keep original-byte Save available for nonempty damaged/unverified drafts, with a playback warning and the existing verified-publication duplicate guard. Uncertain read cleanup protects the recovery lease before cancellation/dispatcher return and skips preview/publication work.
+- Add focused host JUnit policy/store/admission regressions. Android extractor/codec behavior and device playback/lifecycle validation remain unverified; no repair, format switch, background scan or draft-schema change.
+
+## Unreleased — player / waveform readiness (Phase 1)
+
+- Bind Editor Play and Seek to the prepared source, invalidating old playback only after valid metadata is accepted. Preparation failure keeps the new metadata/real waveform and reports Playback unavailable.
+- Retire native preview players on an owned IO worker outside the readiness monitor, releasing directly without an invalid pause of prepared or failed players. Source adoption waits cooperatively up to 5 seconds for retirement; cancellation, timeout or cleanup failure keeps the prior identity unavailable instead of displaying a new source over old playback. Disposal revokes immediately while late preparation/cleanup remains owned.
+- Keep waveform availability independent of playback; decode failures no longer manufacture synthetic amplitudes. Synthetic development previews carry provenance.
+- Register codec ownership before configure/start, clean resources independently, propagate cancellation, and bound cooperative decode waiting (5 seconds without progress / 120 seconds overall). Native vendor calls cannot be hard-preempted.
+- Add focused host regressions for source switching, readiness, native transport errors, cancellation, ownership, PCM folding and bounded waits. Device playback/lifecycle validation is not claimed.
+
+## Unreleased — recording-draft safety
+
+- Retain original recording drafts during Editor startup, disposal and source switching; receipts no longer authorize automatic deletion.
+- Verify finalized, readable, byte-identical publication copies before tracking or hiding a duplicate. Malformed, missing, denied or unverifiable destinations keep drafts recoverable.
+- Add host regressions for cold-owner recovery, verification failures, receipt bounds and retained publication originals. Android provider/device verification remains pending review and explicit authorization.
+
 ## 0.8.0-dev.6
 
 - Prepared the standalone Resound repository for its GitHub mirror.

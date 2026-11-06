@@ -1,6 +1,6 @@
 /*
  * file:    Ringtones.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.4.0
  * desc:    Sets an audio file as the default ringtone. Inserts a copy into the
  *          MediaStore Ringtones collection (IS_RINGTONE=1), then points the
@@ -43,6 +43,7 @@ object Ringtones {
      * ringtone. [source] is a local file (already decoded to cache).
      */
     fun setAsDefault(context: Context, source: File, displayName: String, ext: String): Result {
+        if (com.typezero.resound.BuildConfig.IS_DEVTEST) return Result.Error("Disabled in DEV TEST build (would change the device-wide ringtone)")
         if (!canWrite(context)) return Result.NeedsPermission
         return try {
             val resolver = context.contentResolver

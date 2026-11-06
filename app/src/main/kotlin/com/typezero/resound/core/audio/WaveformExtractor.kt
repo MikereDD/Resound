@@ -1,6 +1,6 @@
 /*
  * file:    WaveformExtractor.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.1.0
  * desc:    Decodes an audio source to a downsampled peak array for rendering.
  *          One bucket = (min, max) sample amplitude over a window, so the
@@ -21,12 +21,18 @@ import kotlin.math.sin
  * Downsampled waveform. [mins] and [maxs] are parallel arrays, one entry per
  * bucket, each in -1f..1f. [bucketCount] = mins.size.
  */
+enum class WaveformProvenance { REAL, SYNTHETIC, UNAVAILABLE }
+
 class Waveform(
     val mins: FloatArray,
     val maxs: FloatArray,
     val durationMs: Long,
+    val provenance: WaveformProvenance = WaveformProvenance.REAL,
 ) {
     val bucketCount: Int get() = mins.size
+    companion object {
+        fun unavailable(durationMs: Long) = Waveform(floatArrayOf(0f), floatArrayOf(0f), durationMs, WaveformProvenance.UNAVAILABLE)
+    }
 }
 
 interface WaveformExtractor {
@@ -56,6 +62,6 @@ class FakeWaveformExtractor : WaveformExtractor {
                 maxs[i] = a
                 mins[i] = -a
             }
-            Waveform(mins, maxs, file.durationMs)
+            Waveform(mins, maxs, file.durationMs, WaveformProvenance.SYNTHETIC)
         }
 }

@@ -41,6 +41,7 @@ class AppUpdater(private val context: Context) {
     }
 
     suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
+        if (BuildConfig.IS_DEVTEST) return@withContext CheckResult.Failed("Updates are disabled in the DEV TEST build.")
         runCatching {
             val manifestUrl = BuildConfig.UPDATE_MANIFEST_URL
             requireTrustedHttps(manifestUrl)

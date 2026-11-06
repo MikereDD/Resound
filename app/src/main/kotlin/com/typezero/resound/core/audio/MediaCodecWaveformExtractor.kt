@@ -1,12 +1,12 @@
 /*
  * file:    MediaCodecWaveformExtractor.kt
- * author:  Mike Redd (typezero)
+ * author:  Typezer∅
  * version: 0.2.1
  * desc:    Real waveform extraction. Decodes the source to PCM with
  *          MediaExtractor + MediaCodec and folds the samples into
  *          targetBuckets (min, max) pairs as it streams — so memory stays flat
- *          regardless of file length. Falls back to the synthesised shape if
- *          decoding fails for any reason, so the editor is always usable.
+ *          regardless of file length. Decode failure is explicitly unavailable;
+ *          it never manufactures audio amplitudes. Cancellation propagates.
  *
  *          Notes / limits (fine for v0.2.1, refine later):
  *            - Full-file decode; a 4-min track takes ~a second or two.
@@ -22,26 +22,32 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+
 
 class MediaCodecWaveformExtractor(
     private val context: Context,
-    private val fallback: WaveformExtractor = FakeWaveformExtractor(),
+    private val budgetFactory: () -> DecodeBudget = { DecodeBudget() },
 ) : WaveformExtractor {
 
     override suspend fun extract(file: AudioFile, targetBuckets: Int): Waveform =
         withContext(Dispatchers.Default) {
-            runCatching { decode(file, targetBuckets.coerceAtLeast(1)) }
-                .getOrElse { fallback.extract(file, targetBuckets) }
+            WaveformDecode().extract({ decode(file, targetBuckets.coerceAtLeast(1)) }) {
+                Waveform.unavailable(file.durationMs)
+            }
         }
 
-    private fun decode(file: AudioFile, buckets: Int): Waveform {
-        val extractor = MediaExtractor()
-        val pfd = context.contentResolver.openFileDescriptor(file.uri, "r")
-            ?: throw IllegalStateException("Cannot open ${file.uri}")
-        var codec: MediaCodec? = null
-        try {
+    private suspend fun decode(file: AudioFile, buckets: Int): Waveform {
+        val coroutineContext = currentCoroutineContext()
+        val budget = budgetFactory()
+        coroutineContext.ensureActive()
+        return DecodeResources().use { resources ->
+            val pfd = context.contentResolver.openFileDescriptor(file.uri, "r")
+                ?: throw IllegalStateException("Cannot open audio source")
+            resources.defer { pfd.close() }
+            val extractor = MediaExtractor()
+            resources.defer { extractor.release() }
             extractor.setDataSource(pfd.fileDescriptor)
 
             var trackIndex = -1
@@ -60,10 +66,11 @@ class MediaCodecWaveformExtractor(
             var pcmEncoding = format.intOr(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
 
             val mime = format.getString(MediaFormat.KEY_MIME)!!
-            codec = MediaCodec.createDecoderByType(mime).apply {
-                configure(format, null, null, 0)
-                start()
-            }
+            val codec = resources.codec(
+                { MediaCodec.createDecoderByType(mime) },
+                { it.configure(format, null, null, 0) },
+                { it.start() }, { it.stop() }, { it.release() },
+            )
 
             // Estimate total frames so we can map frame index -> bucket as we go.
             val approxFrames = (file.durationMs / 1000.0 * sampleRate).toLong().coerceAtLeast(1)
@@ -75,11 +82,13 @@ class MediaCodecWaveformExtractor(
 
             val info = MediaCodec.BufferInfo()
             var inputDone = false
-            var outputDone = false
+
 
             fun bucketOf(f: Long) = (f / framesPerBucket).toInt().coerceIn(0, buckets - 1)
 
-            while (!outputDone) {
+            DecodeDrain(budget).run {
+                var progressed = false
+                var outputDone = false
                 if (!inputDone) {
                     val inIdx = codec.dequeueInputBuffer(10_000)
                     if (inIdx >= 0) {
@@ -88,13 +97,17 @@ class MediaCodecWaveformExtractor(
                         if (size < 0) {
                             codec.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
+                            progressed = true
                         } else {
                             codec.queueInputBuffer(inIdx, 0, size, extractor.sampleTime, 0)
                             extractor.advance()
+                            progressed = size > 0
                         }
                     }
                 }
 
+                coroutineContext.ensureActive()
+                budget.check(progressed)
                 val outIdx = codec.dequeueOutputBuffer(info, 10_000)
                 when {
                     outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
@@ -107,79 +120,24 @@ class MediaCodecWaveformExtractor(
                         if (outBuf != null && info.size > 0) {
                             outBuf.position(info.offset)
                             outBuf.limit(info.offset + info.size)
-                            frame = foldBuffer(outBuf, channels, pcmEncoding, frame, framesPerBucket, buckets, mins, maxs, ::bucketOf)
+                            val before = frame
+                            frame = PcmPeakFold.foldBuffer(outBuf, channels, pcmEncoding, frame, mins, maxs, ::bucketOf) {
+                                coroutineContext.ensureActive()
+                                budget.check()
+                            }
+                            progressed = progressed || frame > before
                         }
                         codec.releaseOutputBuffer(outIdx, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
                     }
                 }
+                DecodeStep(progressed, outputDone)
             }
-
-            // Empty buckets (silence / gaps) -> flat zero.
-            for (b in 0 until buckets) {
-                if (mins[b] > maxs[b]) { mins[b] = 0f; maxs[b] = 0f }
-            }
-            return Waveform(mins, maxs, file.durationMs)
-        } finally {
-            try { codec?.stop() } catch (_: Throwable) {}
-            try { codec?.release() } catch (_: Throwable) {}
-            extractor.release()
-            pfd.close()
+            WaveformDecode().complete(frame, mins, maxs, file.durationMs)
         }
     }
 
-    /** Fold one PCM output buffer into the bucket arrays. Returns the new frame counter. */
-    private fun foldBuffer(
-        buf: ByteBuffer,
-        channels: Int,
-        pcmEncoding: Int,
-        startFrame: Long,
-        framesPerBucket: Long,
-        buckets: Int,
-        mins: FloatArray,
-        maxs: FloatArray,
-        bucketOf: (Long) -> Int,
-    ): Long {
-        var frame = startFrame
-        val ch = channels.coerceAtLeast(1)
-        buf.order(ByteOrder.LITTLE_ENDIAN)
 
-        if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
-            val fb = buf.asFloatBuffer()
-            val n = fb.remaining()
-            var i = 0
-            while (i + ch <= n) {
-                var peak = 0f
-                for (c in 0 until ch) {
-                    val v = fb.get(i + c)
-                    if (kotlin.math.abs(v) > kotlin.math.abs(peak)) peak = v
-                }
-                val b = bucketOf(frame)
-                if (peak < mins[b]) mins[b] = peak
-                if (peak > maxs[b]) maxs[b] = peak
-                frame++
-                i += ch
-            }
-        } else {
-            // Default / 16-bit PCM.
-            val sb = buf.asShortBuffer()
-            val n = sb.remaining()
-            var i = 0
-            while (i + ch <= n) {
-                var peak = 0f
-                for (c in 0 until ch) {
-                    val v = sb.get(i + c) / 32768f
-                    if (kotlin.math.abs(v) > kotlin.math.abs(peak)) peak = v
-                }
-                val b = bucketOf(frame)
-                if (peak < mins[b]) mins[b] = peak
-                if (peak > maxs[b]) maxs[b] = peak
-                frame++
-                i += ch
-            }
-        }
-        return frame
-    }
 
     private fun MediaFormat.intOr(key: String, default: Int): Int =
         if (containsKey(key)) getInteger(key) else default

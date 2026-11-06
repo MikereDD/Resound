@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0-dev.11 — Development update channel
+
+- Advance the development build to versionCode 24.
+- Add a development update channel: release-signed `-dev` builds check `releases/update-dev.json`; stable builds keep `releases/update.json`. DEV TEST builds never check for updates.
+- Fix update downloads from GitHub Releases: follow up to five redirects, each only to an explicitly trusted HTTPS host (adds `release-assets.githubusercontent.com`).
+- Require the downloaded APK to be `com.typezero.resound`, to carry the manifest's version code and be newer than the installed build, and to be signed only with the Resound release certificate.
+- Add focused host tests for channels, trusted redirects and update identity.
+
 ## 0.8.0-dev.10 — Close audio, compact Editor and filename options
 
 - Advance the development build to versionCode 23.

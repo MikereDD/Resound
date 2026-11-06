@@ -12,13 +12,25 @@ android {
         applicationId = "com.typezero.resound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.8.0-dev.10"
+        versionCode = 24
+        versionName = "0.8.0-dev.11"
 
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
             "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update.json\"",
+        )
+        // Development channel for release-signed "-dev" builds (stable URL above is unchanged).
+        buildConfigField(
+            "String",
+            "UPDATE_DEV_MANIFEST_URL",
+            "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update-dev.json\"",
+        )
+        // Public SHA-256 of the Resound release signing certificate; updates must carry exactly it.
+        buildConfigField(
+            "String",
+            "UPDATE_RELEASE_CERT_SHA256",
+            "\"3aaba0c794a652511c65272f7cf9210432a23069f5a27bd2d700c06891bed499\"",
         )
 
         // Public output folder under Music/ and test-variant switch (overridden by devtest).

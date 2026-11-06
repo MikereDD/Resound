@@ -109,16 +109,17 @@ Loaded audio can be published and set as the Android system ringtone.
 Resound includes a user-initiated sideload updater designed around signed GitHub
 Release assets. Before Android is allowed to install an update, Resound verifies:
 
-- HTTPS-only release URLs
+- HTTPS-only URLs on trusted GitHub hosts, including every redirect
 - SHA-256 of the downloaded APK
-- expected Android package name
-- signing certificate match with the currently installed Resound build
+- expected Android package name and a newer version code that matches the
+  update manifest
+- the Resound release signing certificate, matching the installed build
 
 There are no silent updates and no automatic downgrades.
 
 ## Project status
 
-**Current development source:** `0.8.0-dev.10` (`versionCode 23`)
+**Current development source:** `0.8.0-dev.11` (`versionCode 24`)
 
 The 0.8 line is in development. Development builds are published as GitHub
 **pre-releases**; they are tested on a real device, but not every workflow is
@@ -199,10 +200,14 @@ FFmpeg and the wrapper remain under their own applicable licenses. See
 
 ## Release and update model
 
-The in-app updater reads `releases/update.json` from the `main` branch. That
-file is added with the first stable release; until then, Check for updates
-shows an update-check error. Development pre-releases are installed manually
-and are not offered through the updater.
+The in-app updater has two channels, both read from the `main` branch:
+
+- **Development** (`releases/update-dev.json`): release-signed development
+  builds (`-dev` versions), starting with 0.8.0-dev.11.
+- **Stable** (`releases/update.json`): stable releases. This file is added with
+  the first stable release.
+
+DEV TEST builds never check for updates.
 
 Release APKs do **not** live in the repository. A release manifest points to the
 signed APK attached to the matching GitHub Release, for example:

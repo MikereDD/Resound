@@ -4,8 +4,8 @@ Resound is distributed as a signed sideload APK through **GitHub Releases**:
 https://github.com/MikereDD/Resound/releases
 
 The Git repository contains source and release metadata — never APK binaries.
-The updater manifest (`releases/update.json`) is added with the first stable
-release.
+The updater reads `releases/update-dev.json` (development builds) and
+`releases/update.json` (stable builds, added with the first stable release).
 
 Only the production package (`com.typezero.resound`, release-signed) is
 published. DEV TEST builds (`com.typezero.resound.devtest`, debug-signed) are for
@@ -17,7 +17,9 @@ local device testing and are never attached to a release.
 - Asset: `Resound-v<versionName>.apk`, for example `Resound-v0.8.0-dev.10.apk`,
   with its SHA-256 in the release notes.
 - Mark the GitHub Release as a **pre-release**.
-- Do not update `releases/update.json` for development pre-releases.
+- After the release asset is live, update `releases/update-dev.json` on `main`
+  through a pull request. Never point the stable `releases/update.json` at a
+  development build.
 
 ## Release checklist
 
@@ -43,9 +45,10 @@ The repository `.gitignore` should continue to exclude `*.apk`.
 
 ## Update manifest
 
-The updater reads `releases/update.json` from the `main` branch; see
-[`releases/update.example.json`](../releases/update.example.json). A typical
-release entry looks like:
+The updater reads `releases/update-dev.json` (development builds) or
+`releases/update.json` (stable builds) from the `main` branch; both use the same
+format, see [`releases/update.example.json`](../releases/update.example.json).
+A typical release entry looks like:
 
 ```json
 {
@@ -57,8 +60,9 @@ release entry looks like:
 }
 ```
 
-The updater rejects a wrong hash, wrong package name, or mismatched signing
-certificate by design.
+The updater rejects a wrong hash, a wrong package name, a version code that is
+not newer or differs from the manifest, and any APK not signed with the Resound
+release certificate.
 
-Do not point `releases/update.json` at an asset until that exact signed APK is
+Do not point either manifest at an asset until that exact signed APK is
 available at the final GitHub Release URL.

@@ -14,7 +14,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 
@@ -41,10 +40,13 @@ class AppUpdater(private val context: Context) {
     }
 
     suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
-        if (BuildConfig.IS_DEVTEST) return@withContext CheckResult.Failed("Updates are disabled in the DEV TEST build.")
+        val channel = UpdatePolicy.channel(BuildConfig.IS_DEVTEST, BuildConfig.VERSION_NAME)
+            ?: return@withContext CheckResult.Failed("Updates are disabled in the DEV TEST build.")
         runCatching {
-            val manifestUrl = BuildConfig.UPDATE_MANIFEST_URL
-            requireTrustedHttps(manifestUrl)
+            val manifestUrl = UpdatePolicy.manifestUrl(
+                channel, BuildConfig.UPDATE_MANIFEST_URL, BuildConfig.UPDATE_DEV_MANIFEST_URL,
+            )
+            UpdatePolicy.requireTrustedHttps(manifestUrl)
             val json = JSONObject(httpGetText(manifestUrl))
             val release = Release(
                 versionCode = json.getLong("versionCode"),
@@ -56,7 +58,7 @@ class AppUpdater(private val context: Context) {
             require(release.versionCode > 0) { "Invalid update version code" }
             require(release.versionName.isNotBlank()) { "Invalid update version name" }
             require(release.sha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid SHA-256 in update manifest" }
-            requireTrustedHttps(release.apkUrl)
+            UpdatePolicy.requireTrustedHttps(release.apkUrl)
 
             val installed = installedPackageInfo()
             if (release.versionCode > installed.longVersionCodeCompat()) {
@@ -70,7 +72,7 @@ class AppUpdater(private val context: Context) {
     suspend fun download(release: Release, onProgress: (Int) -> Unit): DownloadResult =
         withContext(Dispatchers.IO) {
             runCatching {
-                requireTrustedHttps(release.apkUrl)
+                UpdatePolicy.requireTrustedHttps(release.apkUrl)
                 val dir = File(context.cacheDir, "updates").apply { mkdirs() }
                 dir.listFiles()?.forEach { it.delete() }
                 val partial = File(dir, "Resound-${release.versionName}.apk.part")
@@ -100,7 +102,7 @@ class AppUpdater(private val context: Context) {
                 require(actualHash.equals(release.sha256, ignoreCase = true)) {
                     "Downloaded APK failed SHA-256 verification"
                 }
-                verifyArchiveIdentity(partial)
+                verifyArchiveIdentity(partial, release)
                 require(partial.renameTo(apk)) { "Could not finalize downloaded APK" }
                 onProgress(100)
                 DownloadResult.Ready(apk)
@@ -125,17 +127,18 @@ class AppUpdater(private val context: Context) {
         }
     }
 
-    private fun verifyArchiveIdentity(apk: File) {
+    private fun verifyArchiveIdentity(apk: File, release: Release) {
         val archive = archivePackageInfo(apk)
             ?: error("Android could not read the downloaded APK")
-        require(archive.packageName == context.packageName) {
-            "Downloaded APK package name does not match Resound"
-        }
-        val installedSigners = signerDigests(installedPackageInfo())
-        val archiveSigners = signerDigests(archive)
-        require(installedSigners.isNotEmpty() && archiveSigners == installedSigners) {
-            "Downloaded APK signing certificate does not match the installed app"
-        }
+        val installed = installedPackageInfo()
+        UpdatePolicy.requireValidUpdate(
+            expectedPackage = context.packageName,
+            manifestVersionCode = release.versionCode,
+            installedVersionCode = installed.longVersionCodeCompat(),
+            installedSigners = signerDigests(installed),
+            releaseCertSha256 = BuildConfig.UPDATE_RELEASE_CERT_SHA256,
+            archive = UpdatePolicy.ApkIdentity(archive.packageName, archive.longVersionCodeCompat(), signerDigests(archive)),
+        )
     }
 
     private fun installedPackageInfo(): PackageInfo {
@@ -200,27 +203,35 @@ class AppUpdater(private val context: Context) {
         }
     }
 
-    private fun openConnection(url: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            instanceFollowRedirects = false
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/json, application/vnd.android.package-archive")
-            setRequestProperty("User-Agent", "Resound/${BuildConfig.VERSION_NAME}")
-            connect()
-            if (responseCode !in 200..299) {
-                disconnect()
-                error("Server returned HTTP $responseCode")
+    /** Follows at most [UpdatePolicy.MAX_REDIRECTS] redirects; every hop must be trusted HTTPS. */
+    private fun openConnection(url: String): HttpURLConnection {
+        var target = url
+        repeat(UpdatePolicy.MAX_REDIRECTS + 1) {
+            UpdatePolicy.requireTrustedHttps(target)
+            val connection = (URL(target).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json, application/vnd.android.package-archive")
+                setRequestProperty("User-Agent", "Resound/${BuildConfig.VERSION_NAME}")
+                connect()
+            }
+            val code = connection.responseCode
+            when {
+                code in 200..299 -> return connection
+                UpdatePolicy.isRedirect(code) -> {
+                    val location = connection.getHeaderField("Location")
+                    connection.disconnect()
+                    target = UpdatePolicy.redirectTarget(target, location)
+                }
+                else -> {
+                    connection.disconnect()
+                    error("Server returned HTTP $code")
+                }
             }
         }
-
-    private fun requireTrustedHttps(url: String) {
-        val uri = URI(url)
-        require(uri.scheme.equals("https", ignoreCase = true)) { "Updater requires HTTPS" }
-        require(uri.userInfo == null && uri.fragment == null) { "Invalid update URL" }
-        val host = uri.host?.lowercase() ?: error("Invalid update host")
-        require(host in TRUSTED_HOSTS) { "Untrusted update host: $host" }
+        error("Too many update redirects")
     }
 
     private fun sha256(file: File): String {
@@ -237,8 +248,4 @@ class AppUpdater(private val context: Context) {
     }
 
     private fun bytesToHex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
-
-    companion object {
-        private val TRUSTED_HOSTS = setOf("raw.githubusercontent.com", "github.com", "objects.githubusercontent.com")
-    }
 }

@@ -123,7 +123,7 @@ There are no silent updates and no automatic downgrades.
 
 ## Project status
 
-**Current development source:** `0.8.0-dev.11` (`versionCode 24`)
+**Current development source:** `0.8.0-dev.12` (`versionCode 25`)
 
 The 0.8 line is in development. Development builds are published as GitHub
 **pre-releases**; they are tested on a real device, but not every workflow is

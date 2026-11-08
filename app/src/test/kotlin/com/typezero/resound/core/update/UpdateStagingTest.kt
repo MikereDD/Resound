@@ -8,7 +8,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** Staged update files are removed after a cancelled install, a failed download or a restart. */
+/** Staged update sessions are isolated and removed after a cancelled install, a failed download or a restart. */
 class UpdateStagingTest {
     @get:Rule val tmp = TemporaryFolder()
 
@@ -39,6 +39,41 @@ class UpdateStagingTest {
         val dir = UpdateStaging.dir(cache).apply { mkdirs() }
         File(dir, "partial.apk").writeText("x")
         assertEquals(1, UpdateStaging.clear(dir))
+        assertTrue(outside.exists())
+    }
+
+    @Test fun eachDownloadGetsItsOwnEmptySession() {
+        val dir = UpdateStaging.dir(tmp.newFolder("cache"))
+        val first = UpdateStaging.newSession(dir)
+        val second = UpdateStaging.newSession(dir)
+        assertTrue(first != second)
+        assertEquals(dir, first.parentFile)
+        assertEquals(dir, second.parentFile)
+        assertTrue(first.list()!!.isEmpty() && second.list()!!.isEmpty())
+    }
+
+    @Test fun discardingASessionLeavesOtherSessionsIntact() {
+        val dir = UpdateStaging.dir(tmp.newFolder("cache"))
+        val stale = UpdateStaging.newSession(dir).also { File(it, "Resound-v0.8.0-dev.12.apk").writeText("partial") }
+        val fresh = UpdateStaging.newSession(dir)
+        val verified = File(fresh, "Resound-v0.8.0-dev.12.apk").apply { writeText("verified") }
+
+        UpdateStaging.discard(stale)
+
+        assertFalse(stale.exists())
+        assertEquals("verified", verified.readText())
+    }
+
+    @Test fun startupClearRemovesSessionsAndLegacyFiles() {
+        val cache = tmp.newFolder("cache")
+        val outside = File(cache, "src_123.mp3").apply { writeText("working copy") }
+        val dir = UpdateStaging.dir(cache)
+        UpdateStaging.newSession(dir).also { File(it, "a.apk").writeText("x"); File(it, "a.apk.sig").writeText("y") }
+        UpdateStaging.newSession(dir)
+        File(dir, "legacy.apk").writeText("dev.11 layout")
+
+        assertEquals(3, UpdateStaging.clear(dir))
+        assertTrue(dir.list()!!.isEmpty())
         assertTrue(outside.exists())
     }
 }

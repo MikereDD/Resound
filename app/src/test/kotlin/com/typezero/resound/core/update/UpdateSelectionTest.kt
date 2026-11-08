@@ -107,6 +107,31 @@ class UpdateSelectionTest {
         rejects("does not match its file name") {
             select(good().apply { asset().put("downloadUrl", "${ManifestFixtures.BASE}/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk?x=1") })
         }
+        rejects("does not match the Resound release") {
+            select(good().apply {
+                asset().put("downloadUrl", "https://github.com/Other/Resound/releases/download/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk")
+            })
+        }
+        rejects("does not match the Resound release") {
+            select(good().apply {
+                signature().put("downloadUrl", "https://github.com/Other/Resound/releases/download/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk.sig")
+            })
+        }
+        rejects("does not match the Resound release") {
+            select(good().apply {
+                asset().put("downloadUrl", "https://github.com/MikereDD/Resound/releases/tag/v0.8.0-dev.12/Resound-v0.8.0-dev.12.apk")
+            })
+        }
+        rejects("does not match the Resound release") {
+            select(good().apply {
+                asset().put("downloadUrl", "${ManifestFixtures.BASE}/v0.8.0-dev.13/Resound-v0.8.0-dev.12.apk")
+            })
+        }
+        rejects("does not match the Resound release") {
+            select(good().apply {
+                asset().put("downloadUrl", "${ManifestFixtures.BASE}/v0.8.0-dev.12/%52esound-v0.8.0-dev.12.apk")
+            })
+        }
         rejects("too large") { select(good().apply { asset().put("size", UpdateTrust.MAX_APK_BYTES + 1) }) }
         rejects("too large") { select(good().apply { signature().put("size", UpdateTrust.MAX_SIGNATURE_BYTES + 1) }) }
     }
@@ -139,5 +164,51 @@ class UpdateSelectionTest {
         // A manifest naming the real pins is offered; the test key's fingerprint is not.
         assertTrue(select(manifest(publicKeySha256 = pinned.releasePublicKeySha256), trust = pinned) != null)
         rejects("does not match the pinned key") { select(good(), trust = pinned) }
+    }
+
+    @Test fun apkAndSignatureUrlsRejectEveryNonCanonicalForm() {
+        val v = "0.8.0-dev.12"
+        val apk = "Resound-v$v.apk"
+        fun variants(name: String) = listOf(
+            "https://GitHub.com/MikereDD/Resound/releases/download/v$v/$name",
+            "https://github.com/mikeredd/Resound/releases/download/v$v/$name",
+            "https://github.com/MikereDD/resound/releases/download/v$v/$name",
+            "https://github.com:443/MikereDD/Resound/releases/download/v$v/$name",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/./$name",
+            "https://github.com/MikereDD/Resound/releases/download/v0.8.0-dev.11/../v$v/$name",
+            "https://github.com/MikereDD/Resound/releases/download/v$v%2F$name",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/$name?",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/$name#x",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/$name/",
+            "https://github.com/MikereDD/Resound/releases/download/v$v//$name",
+            "https://github.com/MikereDD/Resound/releases/latest/download/$name",
+            "https://user@github.com/MikereDD/Resound/releases/download/v$v/$name",
+            "https://github.com./MikereDD/Resound/releases/download/v$v/$name",
+            "http://github.com/MikereDD/Resound/releases/download/v$v/$name",
+            "https://objects.githubusercontent.com/MikereDD/Resound/releases/download/v$v/$name",
+            "https://raw.githubusercontent.com/MikereDD/Resound/main/$name",
+            "https://github.com/MikereDD/Resound-evil/releases/download/v$v/$name",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/$name ",
+            "https://github.com/MikereDD/Resound/releases/download/v$v/${name.replace(".apk", "%2Eapk")}",
+        )
+        val accepted = mutableListOf<String>()
+        variants(apk).forEach { url ->
+            try {
+                select(good().apply { asset().put("downloadUrl", url) })
+                accepted += "apk $url"
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+        variants("$apk.sig").forEach { url ->
+            try {
+                select(good().apply { signature().put("downloadUrl", url) })
+                accepted += "sig $url"
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+        assertEquals(emptyList<String>(), accepted)
+        rejects("does not match its file name") { select(good().apply { signature().put("downloadUrl", "${ManifestFixtures.BASE}/v$v/$apk") }) }
+        rejects("does not match its file name") { select(good().apply { asset().put("downloadUrl", "${ManifestFixtures.BASE}/v$v/$apk.sig") }) }
+        assertEquals(apk, select()!!.asset.fileName)
     }
 }

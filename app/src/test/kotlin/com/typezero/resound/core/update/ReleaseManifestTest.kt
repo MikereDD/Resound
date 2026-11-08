@@ -23,6 +23,15 @@ class ReleaseManifestTest {
         }
     }
 
+    private fun rejectsStrictJson(reason: String, text: String) {
+        try {
+            ReleaseManifest.parse(text)
+            fail("accepted invalid strict JSON: $reason")
+        } catch (e: IllegalArgumentException) {
+            assertTrue("'${e.message}' should mention '$reason'", e.message.orEmpty().contains(reason))
+        }
+    }
+
     @Test fun validDevelopmentManifestParses() {
         val m = parse(manifest())
         assertEquals(2, m.schemaVersion)
@@ -151,6 +160,84 @@ class ReleaseManifestTest {
             fail("accepted an oversized manifest")
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("too large"))
+        }
+    }
+
+    @Test fun strictJsonSyntaxIsEnforcedBeforeSchemaValidation() {
+        val valid = manifest().toString()
+        assertTrue(valid.contains("\"appId\":\"resound\""))
+        rejectsStrictJson(
+            "Duplicate JSON key",
+            valid.replace("\"appId\":\"resound\"", "\"appId\":\"resound\",\"appId\":\"resound\""),
+        )
+        rejectsStrictJson(
+            "Duplicate JSON key",
+            valid.replace("\"size\":45000000", "\"size\":45000000,\"size\":1"),
+        )
+        rejectsStrictJson("Trailing content", valid + " \n\t{}")
+        rejectsStrictJson("Invalid strict JSON", valid.replace("\"appId\":\"resound\"", "\"appId\":// comment\n\"resound\""))
+        rejectsStrictJson("Invalid strict JSON", valid.replace("\"appId\":\"resound\"", "'appId':'resound'"))
+        rejectsStrictJson("Invalid strict JSON", valid.replace("\"appId\":\"resound\"", "appId:\"resound\""))
+        rejectsStrictJson("Invalid strict JSON", valid.replace("\"schemaVersion\":2", "\"schemaVersion\":02"))
+        rejectsStrictJson("Invalid strict JSON", valid.dropLast(1) + ",}")
+        assertEquals("resound", ReleaseManifest.parse(valid).appId)
+    }
+
+    @Test fun decodedDuplicateKeysAreRejectedThroughoutSchema2() {
+        val valid = manifest().toString()
+        listOf(
+            "\"appId\":\"resound\"" to "\"appId\":\"resound\",\"\\u0061ppId\":\"resound\"",
+            "\"algorithm\":\"rsa-sha256\"" to "\"algorithm\":\"rsa-sha256\",\"algorithm\":\"rsa-sha256\"",
+            "\"tag\":\"v0.8.0-dev.12\"" to "\"tag\":\"v0.8.0-dev.12\",\"tag\":\"v0.8.0-dev.12\"",
+            "\"retainVersions\":0" to "\"retainVersions\":0,\"retainVersions\":0",
+        ).forEach { (from, to) ->
+            assertTrue("fixture contains $from", valid.contains(from))
+            rejectsStrictJson("Duplicate JSON key", valid.replace(from, to))
+        }
+    }
+
+    @Test fun integerSchemaFieldsCannotBeNarrowedFromOtherNumberTokens() {
+        val valid = manifest().toString()
+        val zero = "\"retainVersions\":0"
+        assertTrue(valid.contains(zero))
+        listOf("-0", "0.0", "0e0").forEach { token ->
+            rejectsStrictJson("retainVersions", valid.replace(zero, "\"retainVersions\":$token"))
+        }
+    }
+
+    @Test fun validUnicodeAndEscapedSchemaKeysRemainSupported() {
+        val reason = "Music \uD834\uDD1E\nSecurity update"
+        val valid = manifest().put("mandatory", true).put("mandatoryReason", reason).toString()
+        val escaped = valid.replace("\"appId\":", "\"\\u0061ppId\":")
+        assertTrue(valid != escaped)
+        val parsed = ReleaseManifest.parse(" \r\n\t$escaped\n")
+        assertEquals("resound", parsed.appId)
+        assertEquals(reason, parsed.mandatoryReason)
+    }
+
+    @Test fun manifestBytesMustBeStrictUtf8() {
+        val valid = manifest().put("mandatory", true).put("mandatoryReason", "Caf\u00e9 \uD834\uDD1E").toString()
+        assertEquals("Caf\u00e9 \uD834\uDD1E", ReleaseManifest.parseUtf8(valid.toByteArray(Charsets.UTF_8)).mandatoryReason)
+        val at = valid.toByteArray(Charsets.UTF_8).indexOfFirst { it == 'C'.code.toByte() }
+        listOf(
+            byteArrayOf(0xFF.toByte()),                                // invalid byte
+            byteArrayOf(0xC0.toByte(), 0xAF.toByte()),                 // overlong '/'
+            byteArrayOf(0xED.toByte(), 0xA0.toByte(), 0x80.toByte()),  // encoded surrogate
+            byteArrayOf(0xE2.toByte(), 0x82.toByte()),                 // truncated sequence
+        ).forEach { bad ->
+            val bytes = valid.toByteArray(Charsets.UTF_8).let { it.copyOfRange(0, at) + bad + it.copyOfRange(at, it.size) }
+            try {
+                ReleaseManifest.parseUtf8(bytes)
+                fail("accepted malformed UTF-8 ${bad.joinToString { "%02x".format(it) }}")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message.orEmpty().contains("not valid UTF-8"))
+            }
+        }
+        try {
+            ReleaseManifest.parseUtf8(ByteArray(ReleaseManifest.MAX_BYTES + 1) { ' '.code.toByte() })
+            fail("oversized bytes accepted")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message.orEmpty().contains("too large"))
         }
     }
 }

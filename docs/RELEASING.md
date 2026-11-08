@@ -138,6 +138,26 @@ mismatch, a signature that does not verify with the pinned release key, and any
 APK whose package, version or signing certificate is not the expected Resound
 release.
 
+Manifest bytes must be valid UTF-8 and strict JSON (no duplicate keys, trailing
+content or lenient syntax); integer fields must be written as plain integers.
+
+Download trust: the manifest's APK and signature URLs must be exactly
+`https://github.com/MikereDD/Resound/releases/download/v<version>/<file name>`.
+GitHub then redirects to its asset CDN. Every redirect hop (at most 5) must be
+HTTPS on port 443 to `github.com`, `raw.githubusercontent.com`,
+`objects.githubusercontent.com` or `release-assets.githubusercontent.com`; paths
+after the first hop are chosen by GitHub and are not pinned. Integrity never
+depends on the redirect path: the exact size, SHA-256, pinned detached signature
+and APK signer are checked on the downloaded bytes. Narrowing the redirect hosts
+needs the live CDN chain observed first, because an unexpected hop would break
+every update.
+
+Each download is staged in its own directory under `cache/updates`. Leaving the
+updater (the dialog is disposed) cancels the download at once, disconnects the
+transfer, stops it writing at its next read and deletes that directory; a failed
+or superseded download deletes only its own files, and startup clears all of
+them.
+
 Resound's updater protocol is `1`. Raise it, and `minimumUpdaterProtocolVersion`
 where needed, only when an older updater could no longer complete an update.
 

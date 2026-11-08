@@ -1,6 +1,7 @@
 package com.typezero.resound.core.update
 
 import java.net.URI
+import java.net.URISyntaxException
 import java.util.Locale
 
 /** Pure, host-testable update decisions: channel, trusted URLs and redirects, eligibility, downloaded APK identity. */
@@ -14,6 +15,9 @@ object UpdatePolicy {
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",
     )
+
+    /** Manifest asset URLs must name this exact Resound release download origin. */
+    private const val RESOUND_RELEASE_DOWNLOAD = "https://github.com/MikereDD/Resound/releases/download"
 
     enum class Channel(val wire: String, val label: String) {
         DEVELOPMENT("development", "development"),
@@ -31,7 +35,11 @@ object UpdatePolicy {
         if (channel == Channel.DEVELOPMENT) developmentUrl else stableUrl
 
     fun requireTrustedHttps(url: String): URI {
-        val uri = URI(url)
+        val uri = try {
+            URI(url)
+        } catch (_: URISyntaxException) {
+            throw IllegalArgumentException("Invalid update URL")
+        }
         require(uri.scheme.equals("https", ignoreCase = true)) { "Updater requires HTTPS" }
         require(uri.userInfo == null && uri.fragment == null && (uri.port == -1 || uri.port == 443)) { "Invalid update URL" }
         val host = uri.host?.lowercase(Locale.ROOT) ?: error("Invalid update host")
@@ -41,11 +49,15 @@ object UpdatePolicy {
 
     fun isRedirect(code: Int): Boolean = code == 301 || code == 302 || code == 303 || code == 307 || code == 308
 
-    /** The next hop: Location resolved against [current]; it must itself be trusted HTTPS. */
-    fun redirectTarget(current: String, location: String?): String {
+    /** The next hop: Location resolved against [current]; it must itself pass [requireUrl] (trusted HTTPS). */
+    fun redirectTarget(
+        current: String,
+        location: String?,
+        requireUrl: (String) -> Unit = { requireTrustedHttps(it) },
+    ): String {
         require(!location.isNullOrBlank()) { "Update redirect without a location" }
         val next = URI(current).resolve(location.trim()).toString()
-        requireTrustedHttps(next)
+        requireUrl(next)
         return next
     }
 
@@ -96,8 +108,8 @@ object UpdatePolicy {
         val apkName = "${UpdateTrust.DISPLAY_NAME}-v${manifest.version}.apk"
         require(asset.fileName == apkName) { "Release asset name does not match the version" }
         require(asset.signature.fileName == "$apkName.sig") { "Release signature name does not match the APK" }
-        requireAssetUrl(asset.downloadUrl, asset.fileName)
-        requireAssetUrl(asset.signature.downloadUrl, asset.signature.fileName)
+        requireAssetUrl(asset.downloadUrl, manifest.version, asset.fileName)
+        requireAssetUrl(asset.signature.downloadUrl, manifest.version, asset.signature.fileName)
         require(asset.size <= UpdateTrust.MAX_APK_BYTES) { "Release APK is too large" }
         require(asset.signature.size <= UpdateTrust.MAX_SIGNATURE_BYTES) { "Release signature is too large" }
         require(asset.signature.algorithm == UpdateTrust.SIGNATURE_ALGORITHM) { "Unsupported release signature algorithm" }
@@ -111,12 +123,20 @@ object UpdatePolicy {
         return Offer(manifest, asset)
     }
 
-    /** Trusted HTTPS, no query, and the URL's last path segment is exactly the asset's file name. */
-    private fun requireAssetUrl(url: String, fileName: String) {
+    /**
+     * Trusted HTTPS and the exact Resound release URL: expected repository, release tag and file
+     * name, with no query or encoded alias. Redirects after this point remain governed by
+     * [requireTrustedHttps] and [redirectTarget].
+     */
+    private fun requireAssetUrl(url: String, version: String, fileName: String) {
         val uri = requireTrustedHttps(url)
-        require(uri.rawQuery == null && uri.rawPath?.substringAfterLast('/') == fileName) {
+        require(uri.rawQuery == null) { "Release download URL does not match its file name" }
+        require(uri.rawPath == uri.path) { "Release download URL does not match the Resound release" }
+        require(uri.rawPath?.substringAfterLast('/') == fileName) {
             "Release download URL does not match its file name"
         }
+        val expected = "$RESOUND_RELEASE_DOWNLOAD/v$version/$fileName"
+        require(url == expected) { "Release download URL does not match the Resound release" }
     }
 
     /** Identity read from the downloaded archive. [signers] are SHA-256 digests of the signing certificates. */

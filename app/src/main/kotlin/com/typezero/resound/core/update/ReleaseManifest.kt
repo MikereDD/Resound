@@ -2,6 +2,9 @@ package com.typezero.resound.core.update
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.time.OffsetDateTime
 
 /**
@@ -71,9 +74,25 @@ data class ReleaseManifest(
         )
         private val SIGNATURE_ALGORITHMS = setOf("rsa-sha256", "ecdsa-sha256", "ed25519")
 
+        /** Strict UTF-8: malformed bytes are rejected, never replaced with U+FFFD. */
+        fun parseUtf8(bytes: ByteArray): ReleaseManifest {
+            require(bytes.size <= MAX_BYTES) { "Release manifest is too large" }
+            val text = try {
+                Charsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString()
+            } catch (_: CharacterCodingException) {
+                throw IllegalArgumentException("Release manifest is not valid UTF-8")
+            }
+            return parse(text)
+        }
+
         fun parse(text: String): ReleaseManifest {
             require(text.length <= MAX_BYTES) { "Release manifest is too large" }
-            val root = Strict(JSONObject(text), "manifest").keys(
+            // Shared parsing owns syntax and number types; org.json is only a container API.
+            val root = Strict(StrictJson.requireObject(text), "manifest").keys(
                 required = setOf(
                     "schemaVersion", "appId", "displayName", "platform", "architecture", "channel",
                     "version", "publishedAt", "minimumVersion", "updaterProtocolVersion",

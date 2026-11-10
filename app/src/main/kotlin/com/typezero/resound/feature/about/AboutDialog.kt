@@ -25,7 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.typezero.resound.ui.theme.Signal
+import com.typezero.resound.ui.theme.Accent
 import com.typezero.resound.core.io.Outputs
 import com.typezero.resound.ui.theme.TextLo
 
@@ -71,13 +71,13 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 Text(
                     "Source on GitHub ↗",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Signal,
+                    color = Accent, // interactive link: Steel Blue (token swap only; dialog redesign is a separate task)
                     modifier = Modifier.clickable { open(REPO_URL) },
                 )
                 Text(
                     "Changelog ↗",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Signal,
+                    color = Accent, // interactive link: Steel Blue (token swap only; dialog redesign is a separate task)
                     modifier = Modifier.clickable { open(CHANGELOG_URL) },
                 )
                 Text(

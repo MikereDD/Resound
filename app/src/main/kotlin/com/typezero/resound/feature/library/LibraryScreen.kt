@@ -53,12 +53,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.typezero.resound.core.io.Outputs
-import com.typezero.resound.ui.components.LocalControlTreatment
 import com.typezero.resound.ui.components.ResoundHairline
 import com.typezero.resound.ui.components.ResoundIconAction
-import com.typezero.resound.ui.components.ResoundOutlineAction
+import com.typezero.resound.ui.components.ResoundAction
 import com.typezero.resound.ui.components.ResoundPanel
 import com.typezero.resound.ui.components.ResoundScreenHeader
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.IconInfo
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextMid
@@ -169,7 +170,7 @@ internal fun LibraryWorkspace(
                 title = "Audio access required",
                 body = "Allow Resound to list the audio files in $folder.",
             ) {
-                ResoundOutlineAction("Allow access", Icons.Outlined.LockOpen, onAllowAccess)
+                ResoundAction("Allow access", Icons.Outlined.LockOpen, onAllowAccess)
             }
             LibraryPhase.LOADING -> LibraryNotice(icon = null, title = "Scanning $folder…", body = null)
             LibraryPhase.ERROR -> LibraryNotice(
@@ -245,7 +246,7 @@ private fun FormatBadge(format: String) {
             format,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.4.sp),
             fontWeight = FontWeight.SemiBold,
-            color = LocalControlTreatment.current.accent,
+            color = TextMid, // the format is information, not a control
             maxLines = 1,
         )
     }
@@ -257,7 +258,7 @@ private fun LibraryNotice(
     icon: ImageVector?,
     title: String,
     body: String?,
-    iconTint: Color = LocalControlTreatment.current.accent,
+    iconTint: Color = IconInfo,
     action: (@Composable () -> Unit)? = null,
 ) {
     ResoundPanel(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -266,7 +267,7 @@ private fun LibraryNotice(
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp),
                     strokeWidth = 2.dp,
-                    color = LocalControlTreatment.current.accent,
+                    color = Accent,
                 )
             } else {
                 Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))

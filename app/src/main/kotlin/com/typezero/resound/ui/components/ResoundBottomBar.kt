@@ -1,6 +1,5 @@
 package com.typezero.resound.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,8 +46,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.typezero.resound.ui.theme.Ink
 import com.typezero.resound.ui.theme.LineSoft
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.AccentLine
+import com.typezero.resound.ui.theme.ControlIcon
 import com.typezero.resound.ui.theme.TextLo
 
 enum class ResoundDestination(val label: String) {
@@ -81,7 +81,7 @@ fun ResoundBottomBar(
                         ResoundDestination.Settings -> Icons.Outlined.Settings
                     }
                     val active = selected == destination
-                    val tint = if (active) Signal else TextLo
+                    val tint = if (active) Accent else TextLo
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -96,15 +96,15 @@ fun ResoundBottomBar(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
                     ) {
-                        // Selected tab: outlined cyan pill behind the icon (a shape cue, not colour alone).
+                        // Selected tab: thin Steel Blue outline around the icon, accent tint and a semibold label
+                        // (shape and weight cues, not colour alone). No fill or glow.
                         Box(
                             modifier = Modifier
-                                .size(width = 56.dp, height = 30.dp)
-                                .background(if (active) SignalGlow else Color.Transparent, RoundedCornerShape(15.dp))
-                                .then(if (active) Modifier.border(1.dp, Signal, RoundedCornerShape(15.dp)) else Modifier),
+                                .size(width = 58.dp, height = 32.dp)
+                                .then(if (active) Modifier.border(1.dp, AccentLine, RoundedCornerShape(16.dp)) else Modifier),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(ControlIcon.Navigation))
                         }
                         NavLabel(destination, tint, active)
                     }

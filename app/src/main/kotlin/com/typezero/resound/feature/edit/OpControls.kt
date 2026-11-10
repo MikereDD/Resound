@@ -9,21 +9,17 @@
  */
 package com.typezero.resound.feature.edit
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,13 +31,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.Panel
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
+import com.typezero.resound.ui.components.ResoundChoiceChip
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextMid
 import kotlin.math.roundToInt
@@ -159,20 +151,7 @@ private fun ChoiceDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             options.forEach { opt ->
-                val isSelected = opt == sel
-                OutlinedButton(
-                    onClick = { sel = opt },
-                    modifier = Modifier.heightIn(min = 48.dp).semantics { selected = isSelected },
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (isSelected) SignalGlow else Panel,
-                        contentColor = if (isSelected) Signal else TextMid,
-                    ),
-                    border = BorderStroke(1.dp, if (isSelected) Signal else Line),
-                ) {
-                    Text(opt, style = MaterialTheme.typography.labelLarge)
-                }
+                ResoundChoiceChip(opt, selected = opt == sel, onClick = { sel = opt })
             }
         }
         preview(sel)

@@ -1,6 +1,7 @@
 package com.typezero.resound.feature.library
 
 import com.typezero.resound.feature.settings.ReleaseChannel
+import com.typezero.resound.feature.settings.channelBadge
 import com.typezero.resound.feature.settings.releaseChannel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,6 +53,10 @@ class LibrarySettingsPresentationTest {
         assertNull(releaseChannel("0.8.0-beta.1"))
         assertNull("malformed dev version shows no badge rather than a guess", releaseChannel("0.9.0-dev"))
         assertEquals("DEVELOPMENT", ReleaseChannel.DEVELOPMENT.label)
+        // Owner decision D3: development builds are marked; stable and unknown versions show no badge.
+        assertEquals("DEVELOPMENT", channelBadge(releaseChannel("0.8.0-dev.12")))
+        assertNull(channelBadge(releaseChannel("1.0")))
+        assertNull(channelBadge(releaseChannel("—")))
     }
 
     /** LibraryAudio needs android.net.Uri (a stub in host tests), so the row line is tested through its primitive overload. */

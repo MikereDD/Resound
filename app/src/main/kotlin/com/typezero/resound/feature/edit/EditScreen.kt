@@ -110,8 +110,6 @@ import com.typezero.resound.ui.theme.Amber
 import com.typezero.resound.ui.theme.InkRaised
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.PanelHi
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid

@@ -61,8 +61,14 @@ import com.typezero.resound.ui.theme.InkRaised
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.LineSoft
 import com.typezero.resound.ui.theme.Panel
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
+import com.typezero.resound.ui.components.ActionProminence
+import com.typezero.resound.ui.components.ResoundAction
+import com.typezero.resound.ui.components.resoundOutlinedTextColors
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.Ink
+import com.typezero.resound.ui.theme.AccentLine
+import com.typezero.resound.ui.theme.ControlIcon
+import com.typezero.resound.ui.theme.IconInfo
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
@@ -279,7 +285,7 @@ private fun fmtDetailed(ms: Long): String {
 @Composable
 private fun EditorHeader(state: EditorWorkspaceUiState, callbacks: EditorWorkspaceCallbacks, onMore: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Signal, modifier = Modifier.size(24.dp))
+        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Accent, modifier = Modifier.size(ControlIcon.Header))
         Spacer(Modifier.width(8.dp))
         Text("Resound", modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp,
@@ -287,17 +293,17 @@ private fun EditorHeader(state: EditorWorkspaceUiState, callbacks: EditorWorkspa
         IconButton(onClick = callbacks.onOpen, enabled = !state.sourceBusy && !state.recording,
             modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.FolderOpen, "Open audio",
-                tint = if (!state.sourceBusy && !state.recording) TextMid else TextLo.copy(alpha = 0.45f),
-                modifier = Modifier.size(22.dp))
+                tint = if (!state.sourceBusy && !state.recording) Accent else TextLo.copy(alpha = 0.45f),
+                modifier = Modifier.size(ControlIcon.Toolbar))
         }
         IconButton(onClick = callbacks.onRecord, enabled = !state.sourceBusy, modifier = Modifier.size(48.dp)) {
             Icon(if (state.recording) Icons.Default.Stop else Icons.Default.Mic,
                 if (state.recording) "Stop recording" else "Record",
-                tint = if (state.sourceBusy) TextLo.copy(alpha = 0.45f) else if (state.recording) Amber else Signal,
-                modifier = Modifier.size(22.dp))
+                tint = if (state.sourceBusy) TextLo.copy(alpha = 0.45f) else if (state.recording) Amber else Accent,
+                modifier = Modifier.size(ControlIcon.Toolbar))
         }
         IconButton(onClick = onMore, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.Default.MoreHoriz, "More options", tint = TextMid, modifier = Modifier.size(22.dp))
+            Icon(Icons.Default.MoreHoriz, "More options", tint = Accent, modifier = Modifier.size(ControlIcon.Toolbar))
         }
     }
 }
@@ -310,7 +316,7 @@ private fun FileSourceCard(state: EditorWorkspaceUiState, callbacks: EditorWorks
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AudioFileIcon, null, tint = Signal, modifier = Modifier.size(24.dp))
+                Icon(Icons.Default.AudioFileIcon, null, tint = IconInfo, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(state.file?.displayName ?: if (state.recording) "Recording audio" else "No audio loaded",
@@ -329,7 +335,7 @@ private fun FileSourceCard(state: EditorWorkspaceUiState, callbacks: EditorWorks
                     // Visible close: same controller callback and readiness as the options entry.
                     IconButton(onClick = callbacks.onClose, enabled = state.closeEnabled, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Close, "Close audio",
-                            tint = if (state.closeEnabled) TextMid else TextLo.copy(alpha = 0.45f),
+                            tint = if (state.closeEnabled) Accent else TextLo.copy(alpha = 0.45f),
                             modifier = Modifier.size(20.dp))
                     }
                 }
@@ -338,11 +344,13 @@ private fun FileSourceCard(state: EditorWorkspaceUiState, callbacks: EditorWorks
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedButton(onClick = callbacks.onOpen, enabled = !state.sourceBusy && !state.recording,
                         modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(8.dp),
+                        colors = resoundOutlinedTextColors(),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                         Text("Open audio", style = MaterialTheme.typography.labelLarge)
                     }
                     OutlinedButton(onClick = callbacks.onRecord, enabled = !state.sourceBusy,
                         modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(8.dp),
+                        colors = resoundOutlinedTextColors(),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                         Text(if (state.recording) "Stop recording" else "Record",
                             style = MaterialTheme.typography.labelLarge,
@@ -469,7 +477,7 @@ private fun TransportStrip(
         Surface(Modifier.fillMaxWidth(), color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Line)) {
             if (enlarged) {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(fmtDetailed(playhead), style = currentStyle, color = Signal)
+                    Text(fmtDetailed(playhead), style = currentStyle, color = Accent)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(fmtDetailed(selStart), style = endpointStyle, color = TextLo)
                         Text(fmtDetailed(selEnd), style = endpointStyle, color = TextLo)
@@ -479,7 +487,7 @@ private fun TransportStrip(
                 Row(Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(horizontal = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(fmtDetailed(selStart), style = endpointStyle, color = TextLo)
-                    Text(fmtDetailed(playhead), style = currentStyle, color = Signal)
+                    Text(fmtDetailed(playhead), style = currentStyle, color = Accent)
                     Text(fmtDetailed(selEnd), style = endpointStyle, color = TextLo)
                 }
             }
@@ -496,12 +504,13 @@ private fun TransportStrip(
 @Composable
 private fun TransportButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit,
     modifier: Modifier, primary: Boolean = false) {
+    // Primary (play/pause): black surface, thin Steel Blue outline, 30dp icon. Secondary: near-black, neutral outline.
     Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(10.dp), color = if (primary && enabled) SignalGlow else Panel,
-        border = BorderStroke(1.dp, Line)) {
+        shape = RoundedCornerShape(10.dp), color = if (primary) Ink else Panel,
+        border = BorderStroke(1.dp, if (primary && enabled) AccentLine else Line)) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, label, tint = if (enabled) if (primary) Signal else TextHi else TextLo.copy(alpha = 0.45f),
-                modifier = Modifier.size(26.dp))
+            Icon(icon, label, tint = if (enabled) Accent else TextLo.copy(alpha = 0.45f),
+                modifier = Modifier.size(if (primary) ControlIcon.Primary else ControlIcon.Toolbar))
         }
     }
 }
@@ -563,7 +572,7 @@ private fun ToolTile(spec: ToolSpec, enabled: Boolean, onClick: () -> Unit, modi
         shape = RoundedCornerShape(8.dp), color = Panel, border = BorderStroke(1.dp, Line)) {
         Column(Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(spec.icon, null, tint = if (enabled) Signal else TextLo.copy(alpha = 0.45f), modifier = Modifier.size(22.dp))
+            Icon(spec.icon, null, tint = if (enabled) Accent else TextLo.copy(alpha = 0.45f), modifier = Modifier.size(ControlIcon.Toolbar))
             Text(spec.label, modifier = Modifier.padding(top = 4.dp), textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp,
                     fontWeight = FontWeight.Normal, letterSpacing = 0.sp),
@@ -608,21 +617,16 @@ private fun OutputDetails(file: AudioFile?, outputDirectory: String) {
 
 @Composable
 private fun RingtoneButton(enabled: Boolean, onRingtone: () -> Unit) {
-    OutlinedButton(onClick = onRingtone, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = SignalGlow, contentColor = Signal),
-        border = BorderStroke(1.dp, if (enabled) Signal else Line)) {
-        Icon(Icons.Default.Notifications, null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Ringtone", style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp))
-    }
+    ResoundAction("Ringtone", Icons.Default.Notifications, onRingtone, enabled = enabled,
+        prominence = ActionProminence.Secondary, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp))
 }
 
 @Composable
 private fun OptionsButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        shape = RoundedCornerShape(8.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        shape = RoundedCornerShape(8.dp), colors = resoundOutlinedTextColors()) {
+        // bodyMedium carries a fixed colour in the theme; use the button's (enabled/disabled) content colour.
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current)
     }
 }
 
@@ -663,11 +667,11 @@ internal fun DraftRecoveryCard(
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedButton(onClick = { onLoad(f) }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(8.dp)) { Text("Open") }
+                            shape = RoundedCornerShape(8.dp), colors = resoundOutlinedTextColors()) { Text("Open") }
                         OutlinedButton(onClick = { onSave(f) }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(8.dp)) { Text("Save") }
+                            shape = RoundedCornerShape(8.dp), colors = resoundOutlinedTextColors()) { Text("Save") }
                         OutlinedButton(onClick = { onDiscard(f) }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(8.dp)) { Text("Discard") }
+                            shape = RoundedCornerShape(8.dp), colors = resoundOutlinedTextColors()) { Text("Discard") }
                     }
                 }
             }

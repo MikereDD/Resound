@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.typezero.resound.core.audio.Waveform
+import com.typezero.resound.ui.theme.Accent
 import com.typezero.resound.ui.theme.Signal
 import com.typezero.resound.ui.theme.SignalDeep
 import com.typezero.resound.ui.theme.TextHi
@@ -120,14 +121,14 @@ fun WaveformView(
         val xs = (selStartMs.toFloat() / waveform.durationMs) * w
         val xe = (selEndMs.toFloat() / waveform.durationMs) * w
         drawRect(
-            color = Signal.copy(alpha = 0.15f),
+            color = Accent.copy(alpha = 0.18f),
             topLeft = Offset(xs, 0f),
             size = Size((xe - xs).coerceAtLeast(0f), h),
         )
         listOf(xs, xe).forEach { hx ->
-            drawLine(Signal, Offset(hx, 0f), Offset(hx, h), strokeWidth = 2.5.dp.toPx())
-            drawCircle(Signal, radius = 7.dp.toPx(), center = Offset(hx, 10.dp.toPx()))
-            drawCircle(Signal, radius = 7.dp.toPx(), center = Offset(hx, h - 10.dp.toPx()))
+            drawLine(Accent, Offset(hx, 0f), Offset(hx, h), strokeWidth = 2.5.dp.toPx())
+            drawCircle(Accent, radius = 7.dp.toPx(), center = Offset(hx, 10.dp.toPx()))
+            drawCircle(Accent, radius = 7.dp.toPx(), center = Offset(hx, h - 10.dp.toPx()))
         }
 
         // Playhead.

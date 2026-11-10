@@ -1,12 +1,16 @@
 /*
  * file:    ResoundWorkstation.kt
- * desc:    Shared building blocks for the list-style workstation screens (Library, Settings):
- *          a compact screen header, near-black panels, section labels, hairline dividers and
- *          48dp icon / outline actions. Visual only; no behaviour lives here.
+ * desc:    Shared workstation controls: a compact screen header, near-black panels, section labels,
+ *          hairline dividers, 48dp icon actions, outlined actions (primary / secondary) and choice chips.
+ *          Steel Blue (Accent) marks interactive controls and selection; informational icons are
+ *          neutral grey (IconInfo). Visual only; no behaviour lives here.
  */
 package com.typezero.resound.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,65 +29,41 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.AccentLine
+import com.typezero.resound.ui.theme.ControlIcon
+import com.typezero.resound.ui.theme.ControlLabel
+import com.typezero.resound.ui.theme.Ink
 import com.typezero.resound.ui.theme.InkRaised
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.LineSoft
 import com.typezero.resound.ui.theme.Panel
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
+import com.typezero.resound.ui.theme.PanelPressed
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
+import com.typezero.resound.ui.theme.TextMid
 
-
-/**
- * Accent colour and icon sizing for interactive controls. [Current] is the approved cyan treatment and
- * the only one used by the app; alternatives are supplied through [LocalControlTreatment] by debug
- * previews so the owner can compare them on real controls before any global change.
- */
-@Immutable
-data class ControlTreatment(
-    val accent: Color,
-    val passiveIcon: Color,
-    val sectionLabel: Color,
-    val leadingIcon: Dp,
-    val actionIcon: Dp,
-    val buttonContainer: Color,
-    val buttonContent: Color,
-    val buttonBorder: Color,
-) {
-    companion object {
-        val Current = ControlTreatment(
-            accent = Signal,
-            passiveIcon = Signal,
-            sectionLabel = Signal,
-            leadingIcon = 22.dp,
-            actionIcon = 24.dp,
-            buttonContainer = SignalGlow,
-            buttonContent = Signal,
-            buttonBorder = Signal,
-        )
-    }
-}
-
-val LocalControlTreatment = staticCompositionLocalOf { ControlTreatment.Current }
-
-/** One-line screen header: accent icon, title (a heading), optional subtitle and trailing actions. */
+/** One-line screen header: Steel Blue section icon, title (a heading), optional subtitle and trailing actions. */
 @Composable
 fun ResoundScreenHeader(
     icon: ImageVector,
@@ -92,7 +72,6 @@ fun ResoundScreenHeader(
     modifier: Modifier = Modifier,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    val treatment = LocalControlTreatment.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -100,7 +79,7 @@ fun ResoundScreenHeader(
             .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = treatment.accent, modifier = Modifier.size(treatment.leadingIcon))
+        Icon(icon, contentDescription = null, tint = Accent, modifier = Modifier.size(ControlIcon.Header))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -125,7 +104,7 @@ fun ResoundScreenHeader(
     }
 }
 
-/** Near-black panel with a thin border; replaces the large rounded cards on list screens. */
+/** Near-black panel with a thin border; replaces large rounded cards on list screens. */
 @Composable
 fun ResoundPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Surface(
@@ -138,14 +117,14 @@ fun ResoundPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope
     }
 }
 
-/** Small uppercase group label, exposed to accessibility services as a heading. */
+/** Small uppercase group label in readable grey, exposed to accessibility services as a heading. */
 @Composable
 fun ResoundSectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.8.sp),
         fontWeight = FontWeight.SemiBold,
-        color = LocalControlTreatment.current.sectionLabel,
+        color = TextMid,
         modifier = modifier
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp)
             .semantics { heading() },
@@ -158,7 +137,7 @@ fun ResoundHairline(modifier: Modifier = Modifier, startIndent: Dp = 0.dp) {
     HorizontalDivider(modifier = modifier.padding(start = startIndent), thickness = 1.dp, color = LineSoft)
 }
 
-/** 48dp icon action tinted with the control accent. */
+/** 48dp icon action in Steel Blue; disabled icons drop to dim grey. */
 @Composable
 fun ResoundIconAction(
     icon: ImageVector,
@@ -166,48 +145,115 @@ fun ResoundIconAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    iconSize: Dp = ControlIcon.Toolbar,
 ) {
-    val treatment = LocalControlTreatment.current
     IconButton(onClick = onClick, enabled = enabled, modifier = modifier.size(48.dp)) {
         Icon(
             icon,
             contentDescription = contentDescription,
-            tint = if (enabled) treatment.accent else TextLo,
-            modifier = Modifier.size(treatment.actionIcon),
+            tint = if (enabled) Accent else TextLo.copy(alpha = 0.45f),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
 
-/** Compact bordered action button (at least 48dp tall) for inline panels. */
+/** Primary: Steel Blue outline and 30dp icon (Export Mix reference). Secondary: neutral outline, smaller icon. */
+enum class ActionProminence { Primary, Secondary }
+
+/** Resolved colours and widths of an outlined action for one interaction state. Pure, so it is unit-tested. */
+@Immutable
+data class ActionStyle(
+    val container: Color,
+    val border: Color,
+    val borderWidth: Dp,
+    val icon: Color,
+    val label: Color,
+    val iconSize: Dp,
+)
+
+fun actionStyle(prominence: ActionProminence, enabled: Boolean, pressed: Boolean, focused: Boolean): ActionStyle {
+    val primary = prominence == ActionProminence.Primary
+    val iconSize = if (primary) ControlIcon.Primary else ControlIcon.Toolbar - 4.dp
+    if (!enabled) return ActionStyle(InkRaised, Line, 1.dp, TextLo.copy(alpha = 0.45f), TextLo, iconSize)
+    return ActionStyle(
+        container = if (pressed) PanelPressed else if (primary) Ink else InkRaised,
+        // Focus and press thicken the outline and switch it to full Steel Blue: a shape cue, not colour alone.
+        border = if (pressed || focused) Accent else if (primary) AccentLine else Line,
+        borderWidth = if (pressed || focused) 2.dp else 1.dp,
+        icon = Accent,
+        label = ControlLabel,
+        iconSize = iconSize,
+    )
+}
+
+/** Outlined action (at least 48dp tall) with explicit pressed, focused, enabled and disabled appearances. */
 @Composable
-fun ResoundOutlineAction(
+fun ResoundAction(
     text: String,
     icon: ImageVector?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    prominence: ActionProminence = ActionProminence.Primary,
+    iconSize: Dp? = null,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+    labelSize: TextUnit = 14.sp,
+    interactionSource: MutableInteractionSource? = null,
 ) {
-    val treatment = LocalControlTreatment.current
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val focused by source.collectIsFocusedAsState()
+    val style = actionStyle(prominence, enabled, pressed, focused)
     Button(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-        border = BorderStroke(1.dp, if (enabled) treatment.buttonBorder else Line),
+        contentPadding = contentPadding,
+        border = BorderStroke(style.borderWidth, style.border),
         colors = ButtonDefaults.buttonColors(
-            containerColor = treatment.buttonContainer,
-            contentColor = treatment.buttonContent,
-            disabledContainerColor = InkRaised,
-            disabledContentColor = TextLo,
+            containerColor = style.container,
+            contentColor = style.label,
+            disabledContainerColor = style.container,
+            disabledContentColor = style.label,
         ),
+        elevation = null,
+        interactionSource = source,
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = if (enabled) treatment.accent else TextLo,
-                modifier = Modifier.size(treatment.actionIcon - 4.dp))
+            Icon(icon, contentDescription = null, tint = style.icon, modifier = Modifier.size(iconSize ?: style.iconSize))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp))
+        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = labelSize, lineHeight = 18.sp,
+                fontWeight = if (prominence == ActionProminence.Primary) FontWeight.SemiBold else FontWeight.Medium,
+                letterSpacing = 0.sp))
+    }
+}
+
+/** Colours for stock text-only OutlinedButtons: light-grey label instead of Material's primary (Steel Blue) text. */
+@Composable
+fun resoundOutlinedTextColors() = ButtonDefaults.outlinedButtonColors(
+    containerColor = Color.Transparent,
+    contentColor = ControlLabel,
+    disabledContentColor = TextLo.copy(alpha = 0.45f),
+)
+
+/** Single-choice option: selection shows as a 2dp Steel Blue outline, accent text and semibold weight. */
+@Composable
+fun ResoundChoiceChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp).semantics { this.selected = selected },
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (selected) Ink else Panel,
+            contentColor = if (selected) Accent else TextMid,
+        ),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) Accent else Line),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }

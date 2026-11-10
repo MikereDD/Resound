@@ -65,8 +65,12 @@ import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.LineSoft
 import com.typezero.resound.ui.theme.Panel
 import com.typezero.resound.ui.theme.PanelHi
+import com.typezero.resound.ui.components.ActionProminence
+import com.typezero.resound.ui.components.ResoundAction
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.AccentLine
+import com.typezero.resound.ui.theme.ControlIcon
 import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
@@ -190,7 +194,7 @@ private fun TimelineFillColumn(flexMin: Dp, spacing: Dp, modifier: Modifier = Mo
 @Composable
 private fun MultitrackHeader(tracks: List<Track>, showMore: Boolean, onMore: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Tune, contentDescription = null, tint = Signal, modifier = Modifier.size(22.dp))
+        Icon(Icons.Outlined.Tune, contentDescription = null, tint = Accent, modifier = Modifier.size(ControlIcon.Header))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("Multitrack", maxLines = 1, overflow = TextOverflow.Ellipsis, color = TextHi,
@@ -201,7 +205,7 @@ private fun MultitrackHeader(tracks: List<Track>, showMore: Boolean, onMore: () 
         }
         if (showMore) {
             IconButton(onClick = onMore, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.MoreHoriz, "More options", tint = TextMid, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.MoreHoriz, "More options", tint = Accent, modifier = Modifier.size(ControlIcon.Toolbar))
             }
         }
     }
@@ -211,7 +215,7 @@ private fun MultitrackHeader(tracks: List<Track>, showMore: Boolean, onMore: () 
 private fun MultitrackStatus(state: MultitrackUiState, busy: Boolean, diagnostics: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if (busy) Amber else Signal))
+            Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if (busy) Amber else Accent))
             Spacer(Modifier.width(8.dp))
             Text(state.status, color = TextMid, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp))
@@ -383,7 +387,7 @@ private fun TrackLane(
                 }
             }
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(if (hasSelection) Signal else Line))
+        Box(Modifier.width(1.dp).fillMaxHeight().background(if (hasSelection) Accent else Line))
         Box(Modifier.weight(1f).fillMaxHeight().background(Ink).horizontalScroll(scrollState)) {
             Canvas(modifier = Modifier.width(contentDp).height(laneHeight)) {
                 val seconds = (size.width / (pxPerMs * 1000f)).toInt().coerceAtLeast(0)
@@ -430,12 +434,15 @@ private fun LaneControl(label: String, description: String, active: Boolean, ena
         Surface(
             shape = RoundedCornerShape(6.dp),
             color = if (active) Amber else PanelHi,
-            contentColor = if (active) Ink else if (enabled) TextHi else TextLo,
+            contentColor = if (active) Ink else if (enabled) Accent else TextLo.copy(alpha = 0.45f),
             border = BorderStroke(1.dp, if (active) Amber else Line),
             modifier = Modifier.widthIn(min = 36.dp).heightIn(min = 28.dp),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
-                Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.clearAndSetSemantics { })
+                // Explicit colour: the theme's default text style carries TextHi, which would override the
+                // Surface content colour and make enabled and disabled lanes look identical.
+                Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = LocalContentColor.current,
+                    modifier = Modifier.clearAndSetSemantics { })
             }
         }
     }
@@ -444,7 +451,7 @@ private fun LaneControl(label: String, description: String, active: Boolean, ena
 @Composable
 private fun SelectedClipReadout(clip: Clip?) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Panel,
-        border = BorderStroke(1.dp, if (clip != null) Signal.copy(alpha = 0.55f) else Line)) {
+        border = BorderStroke(1.dp, if (clip != null) AccentLine else Line)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -463,17 +470,17 @@ private fun ClipMetric(label: String, value: String?) {
         Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 14.sp), color = TextLo)
         // "-:--" while no clip is selected keeps the row's height constant.
         Text(value ?: "-:--", style = TimecodeStyle.copy(fontSize = 16.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
-            color = if (value != null) Signal else TextLo)
+            color = if (value != null) TextHi else TextLo)
     }
 }
 
 @Composable
 private fun MultitrackToolbar(state: MultitrackUiState, callbacks: MultitrackCallbacks, enabled: Boolean) {
     val exportEnabled = exportMixEnabled(enabled, state.tracks)
-    val fontScale = LocalDensity.current.fontScale
+    val oneRow = toolbarFitsOneRow()
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = Panel, border = BorderStroke(1.dp, Line)) {
         BoxWithConstraints(Modifier.padding(6.dp)) {
-            if (maxWidth < 340.dp || fontScale > 1.15f) {
+            if (!oneRow(maxWidth)) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         AddTrackButton(enabled, callbacks.onAddTrack, Modifier.weight(1f))
@@ -484,7 +491,7 @@ private fun MultitrackToolbar(state: MultitrackUiState, callbacks: MultitrackCal
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    horizontalArrangement = Arrangement.spacedBy(TOOLBAR_GAP)) {
                     AddTrackButton(enabled, callbacks.onAddTrack)
                     ZoomControls(state.pxPerSec, enabled, callbacks)
                     Spacer(Modifier.weight(1f))
@@ -495,19 +502,51 @@ private fun MultitrackToolbar(state: MultitrackUiState, callbacks: MultitrackCal
     }
 }
 
+private val TOOLBAR_GAP = 4.dp
+// Toolbar keeps the approved Phase 3 label sizes so the reference 412dp width stays on one row with the 30dp
+// Export Mix icon; Add Track steps its icon down to 24dp for the same reason.
+private val ADD_TRACK_ICON = 24.dp
+private val ADD_TRACK_LABEL = 12.sp
+private val EXPORT_LABEL = 13.sp
+private val ADD_TRACK_PADDING = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+private val EXPORT_PADDING = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+/** Widest zoom label (zoom is capped at 240 px/s by zoomedIn); reserving it keeps the controls still while zooming. */
+private const val WIDEST_ZOOM_LABEL = "240 px/s"
+
+/**
+ * One toolbar row only when Add Track, the zoom group and Export Mix fit at their full icon sizes; otherwise the
+ * toolbar wraps (Export Mix gets its own full-width row) instead of shrinking or clipping. Text is measured.
+ */
 @Composable
-private fun AddTrackButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(8.dp), color = InkRaised, border = BorderStroke(1.dp, Line)) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center) {
-            Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = null, tint = if (enabled) Signal else TextLo,
-                modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Add Track", color = if (enabled) TextHi else TextLo,
-                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp))
+private fun zoomLabelWidth(): Dp {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp)
+    return remember(measurer, density, style) { with(density) { measurer.measure(WIDEST_ZOOM_LABEL, style).size.width.toDp() + 2.dp } }
+}
+
+@Composable
+private fun toolbarFitsOneRow(): (Dp) -> Boolean {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val label = MaterialTheme.typography.labelLarge.copy(lineHeight = 18.sp, letterSpacing = 0.sp)
+    val zoom = zoomLabelWidth()
+    val required = remember(density, measurer, label, zoom) {
+        with(density) {
+            val add = measurer.measure("Add Track", label.copy(fontSize = ADD_TRACK_LABEL, fontWeight = FontWeight.Medium)).size.width.toDp()
+            val export = measurer.measure("Export Mix", label.copy(fontSize = EXPORT_LABEL, fontWeight = FontWeight.SemiBold)).size.width.toDp()
+            (8.dp + ADD_TRACK_ICON + 8.dp + add + 8.dp) + (48.dp + zoom + 48.dp) +
+                (10.dp + ControlIcon.Primary + 8.dp + export + 10.dp) + TOOLBAR_GAP * 3 + 1.dp // 1dp rounding margin
         }
     }
+    return { available -> available >= required }
+}
+
+@Composable
+private fun AddTrackButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    ResoundAction("Add Track", Icons.AutoMirrored.Outlined.PlaylistAdd, onClick, modifier, enabled = enabled,
+        prominence = ActionProminence.Secondary, iconSize = ADD_TRACK_ICON, contentPadding = ADD_TRACK_PADDING,
+        labelSize = ADD_TRACK_LABEL)
 }
 
 @Composable
@@ -515,7 +554,7 @@ private fun ZoomControls(pxPerSec: Float, enabled: Boolean, callbacks: Multitrac
     Row(verticalAlignment = Alignment.CenterVertically) {
         ZoomButton(Icons.Outlined.Remove, "Zoom out", enabled, callbacks.onZoomOut)
         Text("${pxPerSec.roundToInt()} px/s", color = TextMid, textAlign = TextAlign.Center, maxLines = 1,
-            modifier = Modifier.widthIn(min = 44.dp),
+            modifier = Modifier.width(zoomLabelWidth()),
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp))
         ZoomButton(Icons.Outlined.Add, "Zoom in", enabled, callbacks.onZoomIn)
     }
@@ -526,28 +565,17 @@ private fun ZoomButton(icon: androidx.compose.ui.graphics.vector.ImageVector, de
     Surface(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp), shape = RoundedCornerShape(8.dp),
         color = InkRaised, border = BorderStroke(1.dp, Line)) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = description, tint = if (enabled) TextHi else TextLo, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = description, tint = if (enabled) Accent else TextLo.copy(alpha = 0.45f),
+                modifier = Modifier.size(ControlIcon.Navigation))
         }
     }
 }
 
+/** Reference primary action: black surface, thin Steel Blue outline, 30dp Steel Blue icon, light-grey label. */
 @Composable
 private fun ExportMixButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-        border = BorderStroke(1.dp, if (enabled) Signal else Line),
-        colors = ButtonDefaults.buttonColors(containerColor = SignalGlow, contentColor = Signal,
-            disabledContainerColor = InkRaised, disabledContentColor = TextLo),
-    ) {
-        Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Export Mix", style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp))
-    }
+    ResoundAction("Export Mix", Icons.Outlined.FileUpload, onClick, modifier, enabled = enabled,
+        prominence = ActionProminence.Primary, contentPadding = EXPORT_PADDING, labelSize = EXPORT_LABEL)
 }
 
 @Composable
@@ -655,7 +683,7 @@ private fun ClipBox(
                 }
                 drawPath(path, brush = Brush.verticalGradient(listOf(topColor, bottomColor)))
             }
-            val border = if (selected) Signal else accent.copy(alpha = 0.55f)
+            val border = if (selected) Accent else accent.copy(alpha = 0.55f)
             drawRoundRect(
                 color = border,
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()),
@@ -664,13 +692,13 @@ private fun ClipBox(
             if (selected) {
                 val handleWidth = 12.dp.toPx()
                 drawRoundRect(
-                    color = Signal,
+                    color = Accent,
                     topLeft = Offset(0f, 0f),
                     size = Size(handleWidth, size.height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
                 )
                 drawRoundRect(
-                    color = Signal,
+                    color = Accent,
                     topLeft = Offset(size.width - handleWidth, 0f),
                     size = Size(handleWidth, size.height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),

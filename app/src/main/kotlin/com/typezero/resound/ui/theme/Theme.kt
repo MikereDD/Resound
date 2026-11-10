@@ -29,24 +29,31 @@ val PanelHi = Color(0xFF13181C)
 val PanelPressed = Color(0xFF1C2429)
 val Line = Color(0xFF29343B)
 val LineSoft = Color(0xFF192126)
+// Data colours: waveform body and the first track identity. Not used for controls.
 val Signal = Color(0xFF00D4DA)
 val SignalDeep = Color(0xFF004D52)
-val SignalGlow = Color(0x3300D4DA)
+
+// Interactive accent (owner-approved Steel Blue): controls, selection and meaningful active states.
+val Accent = Color(0xFF769DB8)
+val AccentLine = Color(0xB3769DB8)       // thin, understated outline on primary actions (70%)
+val AccentDeep = Color(0xFF22303A)       // Material primaryContainer; no glow or tinted fills elsewhere
+val ControlLabel = Color(0xFFD3DAE0)     // readable light-grey label on controls
+val IconInfo = Color(0xFF8A9AA6)         // neutral grey for informational, non-interactive icons
 val Amber = Color(0xFFF4A62A)
 val TextHi = Color(0xFFF0F5F7)
 val TextMid = Color(0xFFB5C0C8)
 val TextLo = Color(0xFF8A9AA6)
 
 private val ResoundColors = darkColorScheme(
-    primary = Signal,
+    primary = Accent,
     onPrimary = Ink,
-    primaryContainer = SignalDeep,
+    primaryContainer = AccentDeep,
     onPrimaryContainer = TextHi,
     secondary = Amber,
     onSecondary = Ink,
     secondaryContainer = PanelHi,
     onSecondaryContainer = TextHi,
-    tertiary = Signal,
+    tertiary = Accent,
     background = Ink,
     onBackground = TextHi,
     surface = Panel,
@@ -104,6 +111,14 @@ private val ResoundShapes = Shapes(
     large = RoundedCornerShape(22.dp),
     extraLarge = RoundedCornerShape(28.dp),
 )
+
+/** Icon size targets; layouts may step down where a target would clip (always inside 48dp touch targets). */
+object ControlIcon {
+    val Primary = 30.dp
+    val Toolbar = 28.dp
+    val Navigation = 26.dp
+    val Header = 26.dp
+}
 
 object ResoundDimens {
     val ScreenHorizontal = 20.dp

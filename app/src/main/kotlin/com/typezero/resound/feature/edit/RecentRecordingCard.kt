@@ -21,8 +21,9 @@ import androidx.compose.ui.semantics.semantics
 import com.typezero.resound.ui.theme.Amber
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.Panel
-import com.typezero.resound.ui.theme.Signal
-import com.typezero.resound.ui.theme.SignalGlow
+import com.typezero.resound.ui.components.ResoundAction
+import com.typezero.resound.ui.components.resoundOutlinedTextColors
+import com.typezero.resound.ui.theme.IconInfo
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
@@ -51,7 +52,7 @@ fun RecentRecordingCard(recording: RecentRecording, notice: RecentRecordingNotic
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = Signal, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Mic, contentDescription = null, tint = IconInfo, modifier = Modifier.size(18.dp))
                 Text("RECENT RECORDING", style = labelStyle,
                     fontWeight = FontWeight.SemiBold, color = TextLo)
             }
@@ -83,7 +84,7 @@ fun RecentRecordingCard(recording: RecentRecording, notice: RecentRecordingNotic
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     OutlinedButton(onClick = onReopen, modifier = Modifier.heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(8.dp), colors = resoundOutlinedTextColors(),
                         border = BorderStroke(1.dp, Line)) {
                         Text("Retry", style = labelStyle, fontWeight = FontWeight.SemiBold)
                     }
@@ -92,14 +93,7 @@ fun RecentRecordingCard(recording: RecentRecording, notice: RecentRecordingNotic
                     }
                 }
             } else {
-                OutlinedButton(onClick = onReopen, modifier = Modifier.heightIn(min = 48.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Signal),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SignalGlow, contentColor = Signal)) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Reopen", style = labelStyle, fontWeight = FontWeight.SemiBold)
-                }
+                ResoundAction("Reopen", Icons.Default.FolderOpen, onReopen)
             }
         }
     }

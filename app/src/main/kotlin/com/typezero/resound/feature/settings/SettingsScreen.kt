@@ -58,16 +58,17 @@ import androidx.compose.ui.unit.sp
 import com.typezero.resound.core.update.TypezeroVersion
 import com.typezero.resound.feature.about.AboutDialog
 import com.typezero.resound.feature.about.UpdateDialog
-import com.typezero.resound.ui.components.LocalControlTreatment
 import com.typezero.resound.ui.components.ResoundHairline
 import com.typezero.resound.ui.components.ResoundPanel
 import com.typezero.resound.ui.components.ResoundScreenHeader
 import com.typezero.resound.ui.components.ResoundSectionLabel
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.ControlIcon
+import com.typezero.resound.ui.theme.IconInfo
 import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.PanelHi
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
-import com.typezero.resound.ui.theme.TextMid
 
 private const val CHANGELOG_URL =
     "https://github.com/MikereDD/Resound/blob/main/CHANGELOG.md"
@@ -113,6 +114,9 @@ internal fun releaseChannel(versionName: String?): ReleaseChannel? {
     return if (parsed.isDevelopment) ReleaseChannel.DEVELOPMENT else ReleaseChannel.STABLE
 }
 
+/** Badge text beside the version: only development builds are marked; stable and unknown show the version alone. */
+internal fun channelBadge(channel: ReleaseChannel?): String? = if (channel == ReleaseChannel.DEVELOPMENT) channel.label else null
+
 /** Display-only Settings body; dialogs, version lookup and links stay in [SettingsScreen]. */
 @Composable
 internal fun SettingsWorkspace(
@@ -145,7 +149,7 @@ internal fun SettingsWorkspace(
                     }
                 }
                 if (!inline) {
-                    Row(Modifier.padding(start = 16.dp + LocalControlTreatment.current.leadingIcon + 12.dp, bottom = 10.dp)) {
+                    Row(Modifier.padding(start = 16.dp + ControlIcon.Header + 12.dp, bottom = 10.dp)) {
                         VersionChip(version, channel)
                     }
                 }
@@ -181,7 +185,7 @@ internal fun SettingsWorkspace(
     }
 }
 
-private val ROW_TEXT_INDENT = 50.dp
+private val ROW_TEXT_INDENT = 56.dp
 private const val SETTINGS_TITLE = "Settings"
 private const val SETTINGS_SUBTITLE = "Updates, workspace and application details"
 private val CHIP_CHANNEL_STYLE_SIZE = 10.sp
@@ -191,18 +195,17 @@ private val CHIP_VERSION_STYLE_SIZE = 12.sp
 private fun versionChipFitsInline(maxWidth: Dp, version: String, channel: ReleaseChannel?): Boolean {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val treatment = LocalControlTreatment.current
     val base = MaterialTheme.typography.labelMedium
-    return remember(maxWidth, version, channel, density, treatment, measurer) {
+    return remember(maxWidth, version, channel, density, measurer) {
         fun width(text: String, size: androidx.compose.ui.unit.TextUnit, weight: FontWeight, spacing: Float) =
             measurer.measure(text, base.copy(fontSize = size, fontWeight = weight, letterSpacing = spacing.sp)).size.width
         val chipPx = maxOf(width(version, CHIP_VERSION_STYLE_SIZE, FontWeight.Medium, 0f),
-            channel?.let { width(it.label, CHIP_CHANNEL_STYLE_SIZE, FontWeight.Bold, 0.6f) } ?: 0)
+            channelBadge(channel)?.let { width(it, CHIP_CHANNEL_STYLE_SIZE, FontWeight.Bold, 0.6f) } ?: 0)
         val titlePx = measurer.measure(SETTINGS_TITLE, base.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold)).size.width
         // The two-line subtitle must also fit beside the chip (about 55% of its one-line width per line).
         val subtitlePx = measurer.measure(SETTINGS_SUBTITLE, base.copy(fontSize = 12.sp, fontWeight = FontWeight.Normal)).size.width
         with(density) {
-            val fixed = (16.dp + treatment.leadingIcon + 12.dp + 4.dp + 12.dp + 22.dp).toPx()  // insets, icon, gaps, chip padding
+            val fixed = (16.dp + ControlIcon.Header + 12.dp + 4.dp + 12.dp + 22.dp).toPx()  // insets, icon, gaps, chip padding
             maxWidth.toPx() - fixed - chipPx >= maxOf(titlePx.toFloat(), subtitlePx * 0.55f, 120.dp.toPx())
         }
     }
@@ -210,7 +213,7 @@ private fun versionChipFitsInline(maxWidth: Dp, version: String, channel: Releas
 
 @Composable
 private fun VersionChip(version: String, channel: ReleaseChannel?) {
-    val treatment = LocalControlTreatment.current
+    val badge = channelBadge(channel)
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = PanelHi,
@@ -218,12 +221,12 @@ private fun VersionChip(version: String, channel: ReleaseChannel?) {
         modifier = Modifier.semantics(mergeDescendants = true) {},
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), horizontalAlignment = Alignment.End) {
-            if (channel != null) {
+            if (badge != null) {
                 Text(
-                    channel.label,
+                    badge,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = CHIP_CHANNEL_STYLE_SIZE, lineHeight = 14.sp, letterSpacing = 0.6.sp),
                     fontWeight = FontWeight.Bold,
-                    color = if (channel == ReleaseChannel.DEVELOPMENT) treatment.accent else TextMid,
+                    color = Accent,
                 )
             }
             // A version is always left-to-right; in RTL layouts bidi would otherwise show "dev.12-0.8.0".
@@ -236,7 +239,6 @@ private fun VersionChip(version: String, channel: ReleaseChannel?) {
 /** Slim row: action rows (with [onClick]) are buttons with a chevron; information rows are plain text. */
 @Composable
 private fun SettingsRow(icon: ImageVector, title: String, subtitle: String, onClick: (() -> Unit)? = null) {
-    val treatment = LocalControlTreatment.current
     val interaction = if (onClick != null) {
         Modifier.clickable(role = Role.Button, onClick = onClick)
     } else {
@@ -253,10 +255,11 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String, onCl
         Icon(
             icon,
             contentDescription = null,
-            tint = if (onClick != null) treatment.accent else treatment.passiveIcon,
-            modifier = Modifier.size(treatment.leadingIcon),
+            // Steel Blue marks actions; information rows use neutral grey.
+            tint = if (onClick != null) Accent else IconInfo,
+            modifier = Modifier.size(ControlIcon.Primary),
         )
-        Spacer(Modifier.width((ROW_TEXT_INDENT - 14.dp - treatment.leadingIcon).coerceAtLeast(4.dp)))
+        Spacer(Modifier.width((ROW_TEXT_INDENT - 14.dp - ControlIcon.Primary).coerceAtLeast(4.dp)))
         Column(Modifier.weight(1f)) {
             Text(
                 title,

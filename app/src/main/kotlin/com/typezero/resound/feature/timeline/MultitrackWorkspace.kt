@@ -422,6 +422,15 @@ private fun TrackLane(
     }
 }
 
+/** Lane pill colours. Disabled takes precedence over the active (muted) state on surface, border and content. */
+internal data class LaneControlColors(val surface: Color, val border: Color, val content: Color)
+
+internal fun laneControlColors(active: Boolean, enabled: Boolean): LaneControlColors = when {
+    !enabled -> LaneControlColors(surface = PanelHi, border = Line, content = TextLo.copy(alpha = 0.45f))
+    active -> LaneControlColors(surface = Amber, border = Amber, content = Ink)
+    else -> LaneControlColors(surface = PanelHi, border = Line, content = Accent)
+}
+
 /** Compact visual pill inside a full 48dp touch target. */
 @Composable
 private fun LaneControl(label: String, description: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
@@ -431,11 +440,12 @@ private fun LaneControl(label: String, description: String, active: Boolean, ena
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
+        val colors = laneControlColors(active, enabled)
         Surface(
             shape = RoundedCornerShape(6.dp),
-            color = if (active) Amber else PanelHi,
-            contentColor = if (active) Ink else if (enabled) Accent else TextLo.copy(alpha = 0.45f),
-            border = BorderStroke(1.dp, if (active) Amber else Line),
+            color = colors.surface,
+            contentColor = colors.content,
+            border = BorderStroke(1.dp, colors.border),
             modifier = Modifier.widthIn(min = 36.dp).heightIn(min = 28.dp),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {

@@ -65,7 +65,7 @@ class WorkstationStyleTest {
     @Test fun reviewFixesStayInPlace() {
         val ws = sources().first { it.first == "MultitrackWorkspace.kt" }.second
         assertTrue("disabled lane controls are dimmed, not Accent-alike grey",
-            ws.contains("contentColor = if (active) Ink else if (enabled) Accent else TextLo.copy(alpha = 0.45f),"))
+            ws.contains("!enabled -> LaneControlColors(surface = PanelHi, border = Line, content = TextLo.copy(alpha = 0.45f))"))
         assertTrue("lane label follows the content colour (theme text styles carry a fixed colour)",
             ws.contains("Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = LocalContentColor.current,"))
         val editor = sources().first { it.first == "EditorWorkspace.kt" }.second

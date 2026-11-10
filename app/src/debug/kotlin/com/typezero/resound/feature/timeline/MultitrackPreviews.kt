@@ -130,6 +130,24 @@ private fun NavOnly(selected: ResoundDestination) {
     draftStatus = "Recovered automatic draft; 1 audio reference unavailable (visual fixture)",
 ))
 
+/** Regression: an already-muted track while recovery is pending — the M pill must show disabled, not amber. */
+@Preview(widthDp = 448, heightDp = 921)
+@Composable fun MultitrackPreviewRecoveryMuted() = Fixture(MultitrackUiState(
+    tracks = listOf(
+        Track(1, "Vocals", listOf(clip(11, "Vocals", 28_000, 0, 1f))),
+        Track(2, "Drums", listOf(clip(21, "Drums", 24_000, 1_500, 4f)), muted = true),
+    ),
+    recoveryReady = false,
+    status = "Restoring automatic draft… (visual fixture)",
+    draftStatus = DRAFT,
+))
+
+/** Regression: busy (export/import running) with a muted track — every lane pill disabled, mute state kept. */
+@Preview(widthDp = 448, heightDp = 921)
+@Composable fun MultitrackPreviewBusyMuted() = Fixture(MultitrackUiState(
+    tracks = populated(), busy = true, status = "Exporting mix… (visual fixture)", draftStatus = DRAFT,
+))
+
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavEditor() = NavOnly(ResoundDestination.Editor)
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavMultitrack() = NavOnly(ResoundDestination.Multitrack)
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavLibrary() = NavOnly(ResoundDestination.Library)

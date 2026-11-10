@@ -1,6 +1,12 @@
 package com.typezero.resound.feature.timeline
 
 import com.typezero.resound.ui.components.navLabelLines
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.Amber
+import com.typezero.resound.ui.theme.Ink
+import com.typezero.resound.ui.theme.Line
+import com.typezero.resound.ui.theme.PanelHi
+import com.typezero.resound.ui.theme.TextLo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,6 +15,23 @@ import java.io.File
 
 /** Host tests for the Multitrack layout. Source checks are characterization, NOT rendering evidence. */
 class MultitrackWorkspaceLayoutTest {
+    @Test fun laneControlDisabledTakesPrecedenceOverMuted() {
+        val disabled = LaneControlColors(surface = PanelHi, border = Line, content = TextLo.copy(alpha = 0.45f))
+        assertEquals("enabled + muted keeps amber", LaneControlColors(Amber, Amber, Ink), laneControlColors(active = true, enabled = true))
+        assertEquals("enabled + unmuted is normal", LaneControlColors(PanelHi, Line, Accent), laneControlColors(active = false, enabled = true))
+        assertEquals("disabled + muted is disabled, not amber", disabled, laneControlColors(active = true, enabled = false))
+        assertEquals("disabled + unmuted is disabled", disabled, laneControlColors(active = false, enabled = false))
+        // busy or pending recovery is what disables the lanes
+        assertEquals(disabled, laneControlColors(active = true, enabled = multitrackEditingEnabled(recoveryReady = true, busy = true)))
+        assertEquals(disabled, laneControlColors(active = true, enabled = multitrackEditingEnabled(recoveryReady = false, busy = false)))
+        val ws = source("MultitrackWorkspace.kt")
+        assertTrue("LaneControl draws surface, border and content from laneControlColors",
+            ws.contains("val colors = laneControlColors(active, enabled)") && ws.contains("color = colors.surface,") &&
+                ws.contains("contentColor = colors.content,") && ws.contains("border = BorderStroke(1.dp, colors.border),"))
+        assertTrue("mute state and action stay wired",
+            ws.contains("active = track.muted, enabled = enabled) { callbacks.onToggleMute(track.id) }"))
+    }
+
     @Test fun editingRequiresRecoveryAndIdle() {
         assertTrue(multitrackEditingEnabled(recoveryReady = true, busy = false))
         assertFalse(multitrackEditingEnabled(recoveryReady = false, busy = false))

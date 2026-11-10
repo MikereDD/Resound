@@ -34,6 +34,14 @@ import com.typezero.resound.ui.theme.TextHi
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
+/** Maps a horizontal position to a time, clamped to the waveform; 0 before layout. */
+internal fun waveformXToMs(x: Float, width: Float, durationMs: Long): Long =
+    if (width <= 0f || durationMs <= 0L) 0L
+    else ((x / width) * durationMs).roundToLong().coerceIn(0, durationMs)
+
+internal fun waveformMsToX(ms: Long, width: Float, durationMs: Long): Float =
+    if (durationMs <= 0L) 0f else (ms.toFloat() / durationMs) * width
+
 @androidx.compose.runtime.Composable
 fun WaveformView(
     waveform: Waveform,
@@ -54,9 +62,10 @@ fun WaveformView(
             .fillMaxWidth()
             .height(168.dp)
             .pointerInput(waveform) {
-                val w = size.width.toFloat()
-                fun xToMs(x: Float) = ((x / w) * waveform.durationMs).roundToLong().coerceIn(0, waveform.durationMs)
-                fun msToX(ms: Long) = (ms.toFloat() / waveform.durationMs) * w
+                // Read the current width on every event: the activity handles rotation itself, so this
+                // gesture block outlives size changes and a captured width maps drags to wrong times.
+                fun xToMs(x: Float) = waveformXToMs(x, size.width.toFloat(), waveform.durationMs)
+                fun msToX(ms: Long) = waveformMsToX(ms, size.width.toFloat(), waveform.durationMs)
 
                 detectHorizontalDragGestures(
                     onDragStart = { pos ->
@@ -83,7 +92,7 @@ fun WaveformView(
         val step = w / n
 
         // Faint centre baseline.
-        drawLine(Color(0x22FFFFFF), Offset(0f, midY), Offset(w, midY), strokeWidth = 1f)
+        drawLine(Color(0x22FFFFFF), Offset(0f, midY), Offset(w, midY), strokeWidth = 1.dp.toPx())
 
         // Filled mirrored waveform: top edge along maxs, back along mins.
         val path = Path().apply {
@@ -111,18 +120,18 @@ fun WaveformView(
         val xs = (selStartMs.toFloat() / waveform.durationMs) * w
         val xe = (selEndMs.toFloat() / waveform.durationMs) * w
         drawRect(
-            color = Color(0x2635D0C0),
+            color = Signal.copy(alpha = 0.15f),
             topLeft = Offset(xs, 0f),
             size = Size((xe - xs).coerceAtLeast(0f), h),
         )
         listOf(xs, xe).forEach { hx ->
-            drawLine(Signal, Offset(hx, 0f), Offset(hx, h), strokeWidth = 2.5f)
-            drawCircle(Signal, radius = 7f, center = Offset(hx, 10f))
-            drawCircle(Signal, radius = 7f, center = Offset(hx, h - 10f))
+            drawLine(Signal, Offset(hx, 0f), Offset(hx, h), strokeWidth = 2.5.dp.toPx())
+            drawCircle(Signal, radius = 7.dp.toPx(), center = Offset(hx, 10.dp.toPx()))
+            drawCircle(Signal, radius = 7.dp.toPx(), center = Offset(hx, h - 10.dp.toPx()))
         }
 
         // Playhead.
         val xp = (playheadMs.toFloat() / waveform.durationMs) * w
-        drawLine(TextHi, Offset(xp, 0f), Offset(xp, h), strokeWidth = 1.5f)
+        drawLine(TextHi, Offset(xp, 0f), Offset(xp, h), strokeWidth = 1.5.dp.toPx())
     }
 }

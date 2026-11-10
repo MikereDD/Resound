@@ -1,6 +1,8 @@
 package com.typezero.resound.feature.edit
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Mic
@@ -12,12 +14,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.typezero.resound.ui.components.ResoundCard
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import com.typezero.resound.ui.theme.Amber
+import com.typezero.resound.ui.theme.Line
+import com.typezero.resound.ui.theme.Panel
 import com.typezero.resound.ui.theme.Signal
+import com.typezero.resound.ui.theme.SignalGlow
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
@@ -25,6 +30,7 @@ import java.text.DateFormat
 import java.util.Date
 
 /** Deliberately no synthetic waveform or History control: this is one published reference. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecentRecordingCard(recording: RecentRecording, notice: RecentRecordingNotice?,
                         onReopen: () -> Unit, onClear: () -> Unit) {
@@ -32,48 +38,67 @@ fun RecentRecordingCard(recording: RecentRecording, notice: RecentRecordingNotic
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
             .format(Date(recording.completedAtMs))
     }
-    ResoundCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val titleStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 20.sp)
+    val bodyStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp)
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 16.sp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Line),
+        tonalElevation = 0.dp,
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = Signal, modifier = Modifier.size(20.dp))
-                Text("RECENT RECORDING", style = MaterialTheme.typography.labelLarge,
+                Icon(Icons.Default.Mic, contentDescription = null, tint = Signal, modifier = Modifier.size(18.dp))
+                Text("RECENT RECORDING", style = labelStyle,
                     fontWeight = FontWeight.SemiBold, color = TextLo)
             }
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(recording.name, style = MaterialTheme.typography.titleMedium,
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(recording.name, style = titleStyle,
                     fontWeight = FontWeight.SemiBold, color = TextHi,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("Completed $completed", style = MaterialTheme.typography.bodySmall, color = TextMid)
-                Text(recentRecordingMetadata(recording), style = MaterialTheme.typography.bodySmall, color = TextMid)
+                Text("Completed $completed", style = bodyStyle, color = TextLo)
+                Text(recentRecordingMetadata(recording), style = bodyStyle, color = TextLo)
             }
             if (notice != null) {
                 Column(
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("File unavailable", style = MaterialTheme.typography.titleMedium,
+                    Text("File unavailable", style = titleStyle,
                         fontWeight = FontWeight.SemiBold, color = Amber)
                     Text("This recording may have been moved or deleted, or access may be unavailable.",
-                        style = MaterialTheme.typography.bodyMedium, color = TextMid)
+                        style = bodyStyle, color = TextMid)
                     Text("Clear Recent removes only this shortcut. Audio and recovery drafts are kept.",
-                        style = MaterialTheme.typography.bodyMedium, color = TextMid)
+                        style = bodyStyle, color = TextMid)
                     if (notice.clearFailed) {
                         Text("Could not clear Recent. Please try again.",
-                            style = MaterialTheme.typography.bodyMedium, color = Amber)
+                            style = bodyStyle, color = Amber)
                     }
                 }
-                OutlinedButton(onClick = onReopen, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                    Text("Retry", fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = onClear, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text("Clear Recent", fontWeight = FontWeight.SemiBold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    OutlinedButton(onClick = onReopen, modifier = Modifier.heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Line)) {
+                        Text("Retry", style = labelStyle, fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = onClear, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Clear Recent", style = labelStyle, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             } else {
-                Button(onClick = onReopen, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(9.dp))
-                    Text("Reopen", fontWeight = FontWeight.SemiBold)
+                OutlinedButton(onClick = onReopen, modifier = Modifier.heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Signal),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SignalGlow, contentColor = Signal)) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Reopen", style = labelStyle, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

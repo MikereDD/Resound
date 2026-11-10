@@ -2,8 +2,8 @@
  * file:    Theme.kt
  * author:  Typezer∅
  * version: 0.8.0-dev.1
- * desc:    Resound's premium visual system — a darkroom for sound. Deep ink
- *          surfaces, signal-teal interaction states, restrained amber live
+ * desc:    Resound's visual system — a darkroom for sound. OLED-black
+ *          surfaces, cyan interaction states, restrained amber live
  *          states, strong typography, and consistent studio-grade geometry.
  */
 package com.typezero.resound.ui.theme
@@ -22,20 +22,20 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 // Core palette
-val Ink = Color(0xFF070B11)
-val InkRaised = Color(0xFF0B1119)
-val Panel = Color(0xFF101923)
-val PanelHi = Color(0xFF182532)
-val PanelPressed = Color(0xFF20313F)
-val Line = Color(0xFF263746)
-val LineSoft = Color(0xFF1B2935)
-val Signal = Color(0xFF2ED6C6)
-val SignalDeep = Color(0xFF087F78)
-val SignalGlow = Color(0x332ED6C6)
+val Ink = Color(0xFF000000)
+val InkRaised = Color(0xFF07090B)
+val Panel = Color(0xFF0B0E11)
+val PanelHi = Color(0xFF13181C)
+val PanelPressed = Color(0xFF1C2429)
+val Line = Color(0xFF29343B)
+val LineSoft = Color(0xFF192126)
+val Signal = Color(0xFF00D4DA)
+val SignalDeep = Color(0xFF004D52)
+val SignalGlow = Color(0x3300D4DA)
 val Amber = Color(0xFFF4A62A)
 val TextHi = Color(0xFFF0F5F7)
-val TextMid = Color(0xFFB5C2CC)
-val TextLo = Color(0xFF7F93A3)
+val TextMid = Color(0xFFB5C0C8)
+val TextLo = Color(0xFF8A9AA6)
 
 private val ResoundColors = darkColorScheme(
     primary = Signal,
@@ -44,17 +44,23 @@ private val ResoundColors = darkColorScheme(
     onPrimaryContainer = TextHi,
     secondary = Amber,
     onSecondary = Ink,
-    secondaryContainer = Color(0xFF573A0E),
-    onSecondaryContainer = Color(0xFFFFD89A),
+    secondaryContainer = PanelHi,
+    onSecondaryContainer = TextHi,
     tertiary = Signal,
     background = Ink,
     onBackground = TextHi,
     surface = Panel,
     onSurface = TextHi,
+    surfaceTint = Color.Transparent,
     surfaceVariant = PanelHi,
     onSurfaceVariant = TextMid,
-    surfaceContainer = InkRaised,
+    surfaceDim = Ink,
+    surfaceBright = PanelPressed,
+    surfaceContainerLowest = Ink,
+    surfaceContainerLow = InkRaised,
+    surfaceContainer = Panel,
     surfaceContainerHigh = PanelHi,
+    surfaceContainerHighest = PanelPressed,
     outline = Line,
     outlineVariant = LineSoft,
     error = Color(0xFFFF7373),

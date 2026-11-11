@@ -10,7 +10,6 @@ package com.typezero.resound.feature.timeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -74,7 +73,7 @@ fun TimelineScreen(
         }
     }
 
-    val horizontalScroll = rememberScrollState()
+    val horizontalScroll = rememberTimelineScrollState()
 
     val clipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val trackId = addTrackId

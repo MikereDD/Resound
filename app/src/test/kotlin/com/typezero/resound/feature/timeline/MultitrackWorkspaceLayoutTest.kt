@@ -116,10 +116,15 @@ class MultitrackWorkspaceLayoutTest {
     @Test fun clipGesturesAndSharedScrollingArePreserved() {
         val ws = source("MultitrackWorkspace.kt")
         val clip = ws.substringAfter("private fun ClipBox(").substringBefore("private fun trackAccent(")
-        listOf("detectHorizontalDragGestures", "position.x < edge -> 1", "position.x > size.width - edge -> 2",
+        listOf("detectHorizontalDragGestures", "mode = clipDragMode(position.x, currentSpan.value, edge)",
             "trimInCallback.value(delta)", "trimOutCallback.value(delta)", "moveCallback.value(delta)",
             "selectCallback.value()").forEach { assertTrue("clip gesture keeps $it", clip.contains(it)) }
-        assertTrue(Regex("""horizontalScroll\((scrollState|horizontalScroll)\)""").findAll(ws).count() >= 2)
+        // Ruler and every lane share one bounded horizontal scroll (Phase 5: no full-width scroll child).
+        assertEquals(2, Regex("""\.timelineScroll\(scrollArea\)""").findAll(ws).count())
+        // Width-limit guard: no duration-scaled layout width or full-width scroll child may come back.
+        assertFalse("no horizontalScroll child", ws.contains("horizontalScroll("))
+        assertFalse("no full-content width", Regex("""contentDp|\.width\([^)]*(duration|lengthMs|pxPerMs)""").containsMatchIn(ws))
+        assertTrue(ws.contains(".scrollable(area.state, Orientation.Horizontal, reverseDirection = true)"))
         assertTrue(ws.contains("LocalLayoutDirection provides LayoutDirection.Ltr"))
         assertTrue("ruler and lanes share one origin", ws.contains("(maxWidth - LANE_START)") &&
             ws.contains("Modifier.width(TRACK_HEADER_WIDTH)") && ws.contains("Box(Modifier.width(1.dp).fillMaxHeight().background(Line))"))

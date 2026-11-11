@@ -69,7 +69,7 @@ private val fixtureCallbacks = MultitrackCallbacks(
 )
 
 @Composable
-private fun Fixture(state: MultitrackUiState) {
+private fun Fixture(state: MultitrackUiState, initialLeftMs: Double = 0.0) {
     ResoundTheme {
         Scaffold(bottomBar = {
             ResoundBottomBar(ResoundDestination.Multitrack) { EditorPreviewEvents.record("destination:${it.name}") }
@@ -79,6 +79,7 @@ private fun Fixture(state: MultitrackUiState) {
                 callbacks = fixtureCallbacks,
                 modifier = Modifier.padding(padding),
                 scrollState = rememberScrollState(EditorPreviewSettings.initialScroll),
+                horizontalScroll = rememberTimelineScrollState(initialLeftMs),
                 exportNaming = {
                     NamingPanel("Export new copy name", "", enabled = true, ext = "m4a", inDialog = true,
                         onChange = { EditorPreviewEvents.record("export-name:$it") })
@@ -147,6 +148,45 @@ private fun NavOnly(selected: ResoundDestination) {
 @Composable fun MultitrackPreviewBusyMuted() = Fixture(MultitrackUiState(
     tracks = populated(), busy = true, status = "Exporting mix… (visual fixture)", draftStatus = DRAFT,
 ))
+
+/**
+ * Long-arrangement regression fixtures (Phase 5). Synthetic metadata only: every clip keeps the 400-bucket
+ * fixture waveform, so a 12-hour arrangement costs no more memory than a 30-second one.
+ * Track "Bed" holds one clip spanning the whole arrangement; "Intro"/"Outro" hold clips at the start, the
+ * middle and the very end, so distant clip coordinates are visible at each timeline position.
+ */
+private fun longArrangement(totalMs: Long): List<Track> {
+    val len = minOf(30_000L, totalMs / 4)
+    return listOf(
+        Track(1, "Intro", listOf(clip(101, "Intro", len, 0, 1f), clip(102, "Middle", len, totalMs / 2 - len / 2, 4f))),
+        Track(2, "Bed", listOf(clip(201, "Bed", totalMs, 0, 2f))),
+        Track(3, "Outro", listOf(clip(301, "Outro", len, totalMs - len, 3f))),
+    )
+}
+
+/**
+ * Timeline position from the render harness (-Drender.timelineAt=start|mid|end): start = 0; mid = just before
+ * the middle clip; end = past the arrangement end, which the workspace clamps to the last viewport.
+ */
+@Composable
+private fun LongFixture(totalMs: Long, pxPerSec: Float) {
+    val len = minOf(30_000L, totalMs / 4)
+    val leftMs = when (System.getProperty("render.timelineAt", "start")) {
+        "mid" -> (totalMs / 2 - len / 2 - 500L).coerceAtLeast(0L).toDouble()
+        "end" -> totalMs.toDouble()
+        else -> 0.0
+    }
+    Fixture(MultitrackUiState(
+        tracks = longArrangement(totalMs), selectedClip = 301, pxPerSec = pxPerSec, status = FIXTURE_STATUS, draftStatus = DRAFT,
+    ), initialLeftMs = leftMs)
+}
+
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong30s24() = LongFixture(30_000L, 24f)
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong18m240() = LongFixture(18 * 60_000L, 240f)
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong20m240() = LongFixture(20 * 60_000L, 240f)
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong3h24() = LongFixture(3 * 3_600_000L, 24f)
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong3h240() = LongFixture(3 * 3_600_000L, 240f)
+@Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong12h240() = LongFixture(12 * 3_600_000L, 240f)
 
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavEditor() = NavOnly(ResoundDestination.Editor)
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavMultitrack() = NavOnly(ResoundDestination.Multitrack)

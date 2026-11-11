@@ -11,8 +11,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -44,8 +48,11 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.horizontalScrollAxisRange
+import androidx.compose.ui.semantics.scrollBy
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +83,7 @@ import com.typezero.resound.ui.theme.TextLo
 import com.typezero.resound.ui.theme.TextMid
 import com.typezero.resound.ui.theme.TimecodeStyle
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -141,7 +149,7 @@ internal fun MultitrackWorkspace(
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
     laneScrollState: ScrollState = rememberScrollState(),
-    horizontalScroll: ScrollState = rememberScrollState(),
+    horizontalScroll: TimelineScrollState = rememberTimelineScrollState(),
     exportNaming: @Composable () -> Unit = {},
     diagnostics: @Composable () -> Unit = {},
 ) {
@@ -239,7 +247,7 @@ private fun TimelinePanel(
     callbacks: MultitrackCallbacks,
     enabled: Boolean,
     laneScrollState: ScrollState,
-    horizontalScroll: ScrollState,
+    horizontalScroll: TimelineScrollState,
     modifier: Modifier,
 ) {
     val density = LocalDensity.current
@@ -253,14 +261,30 @@ private fun TimelinePanel(
                 // Ruler and lanes share one time origin (LANE_START) and one viewport width; the width is
                 // floored to whole pixels so an arrangement that fits never scrolls by a rounding pixel.
                 val availablePx = with(density) { (maxWidth - LANE_START).toPx().toInt().coerceAtLeast(1).toFloat() }
-                val contentPx = max(availablePx, displayDuration * pxPerMs)
-                val contentDp = with(density) { contentPx.toDp() }
+                // Bounded viewport: the arrangement's full pixel width is never a layout size. Positions stay
+                // absolute (ms -> px as Double); only viewport-local values reach layout and drawing.
+                val pxPerSec = state.pxPerSec
+                val maxLeftMs = timelineMaxLeftMs(displayDuration, pxPerSec, availablePx)
+                val contentEndPx = max(availablePx.toDouble(), timelinePx(displayDuration.toDouble(), pxPerSec))
+                val scrollPx: () -> Double = { renderedScrollPx(horizontalScroll.leftMs, maxLeftMs, pxPerSec) }
+                // Clips are composed per viewport-wide slice; within a slice scrolling only re-places and redraws.
+                val windowIndex by remember(horizontalScroll, maxLeftMs, pxPerSec, availablePx) {
+                    derivedStateOf { timelineWindowIndex(scrollPx(), availablePx) }
+                }
+                val window = timelineWindowPx(windowIndex, availablePx)
+                val currentScale by rememberUpdatedState(pxPerSec)
+                val currentMaxLeftMs by rememberUpdatedState(maxLeftMs)
+                val scrollable = rememberScrollableState { delta -> horizontalScroll.scrollBy(delta, currentScale, currentMaxLeftMs) }
+                // Content changes (not zoom) clamp the stored position, so a shortened arrangement doesn't later
+                // jump the view back to a time past its old end.
+                LaunchedEffect(horizontalScroll, displayDuration) { horizontalScroll.clampTo(currentMaxLeftMs) }
+                val scrollArea = TimelineScrollArea(scrollable, scrollPx, timelinePx(maxLeftMs, pxPerSec))
                 // Few tracks: lanes grow (up to 120dp) into the timeline area; many: base height and scroll.
                 val base = baseLaneHeight()
                 val laneHeight = if (state.tracks.isEmpty()) base else
                     ((maxHeight - rulerHeight() - 1.dp) / state.tracks.size - 1.dp).coerceIn(base, maxOf(base, 120.dp))
                 Column(Modifier.fillMaxSize()) {
-                    TimelineRuler(displayDuration, contentDp, state.pxPerSec, availablePx, horizontalScroll)
+                    TimelineRuler(displayDuration, pxPerSec, availablePx, scrollArea)
                     HorizontalDivider(color = Line)
                     if (state.tracks.isEmpty()) {
                         EmptyTimeline(Modifier.weight(1f))
@@ -270,9 +294,12 @@ private fun TimelinePanel(
                                 TrackLane(
                                     track = track,
                                     accent = trackAccent(index),
-                                    contentDp = contentDp,
                                     pxPerMs = pxPerMs,
-                                    scrollState = horizontalScroll,
+                                    pxPerSec = pxPerSec,
+                                    viewportPx = availablePx,
+                                    contentEndPx = contentEndPx,
+                                    window = window,
+                                    scrollArea = scrollArea,
                                     selectedClip = state.selectedClip,
                                     enabled = enabled,
                                     callbacks = callbacks,
@@ -288,6 +315,22 @@ private fun TimelinePanel(
     }
 }
 
+/**
+ * Horizontal timeline scrolling for the ruler and every lane (one shared [state]). Replaces horizontalScroll:
+ * same drag/fling direction, clipping and accessibility scroll semantics, without a full-width child.
+ */
+private fun Modifier.timelineScroll(area: TimelineScrollArea): Modifier = this
+    .clipToBounds()
+    // Time runs left to right (the panel forces LTR): dragging left moves later in time, as horizontalScroll did.
+    .scrollable(area.state, Orientation.Horizontal, reverseDirection = true)
+    .semantics {
+        horizontalScrollAxisRange = ScrollAxisRange(value = { area.scrollPx().toFloat() }, maxValue = { area.maxScrollPx.toFloat() })
+        scrollBy { x, _ -> area.state.dispatchRawDelta(x) != 0f }
+    }
+
+/** The shared horizontal position the ruler and every lane scroll and draw with. */
+private class TimelineScrollArea(val state: ScrollableState, val scrollPx: () -> Double, val maxScrollPx: Double)
+
 @Composable
 private fun rulerHeight(): Dp = with(LocalDensity.current) { 14.sp.toDp() + 12.dp }
 
@@ -296,7 +339,7 @@ private fun rulerHeight(): Dp = with(LocalDensity.current) { 14.sp.toDp() + 12.d
 private fun baseLaneHeight(): Dp = with(LocalDensity.current) { 16.sp.toDp() } + 56.dp
 
 @Composable
-private fun TimelineRuler(durationMs: Long, contentDp: Dp, pxPerSec: Float, viewportPx: Float, scrollState: ScrollState) {
+private fun TimelineRuler(durationMs: Long, pxPerSec: Float, viewportPx: Float, scrollArea: TimelineScrollArea) {
     val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 14.sp,
         fontWeight = FontWeight.Normal, letterSpacing = 0.sp, color = TextMid)
     val measurer = rememberTextMeasurer()
@@ -311,24 +354,25 @@ private fun TimelineRuler(durationMs: Long, contentDp: Dp, pxPerSec: Float, view
         Text("TIME", modifier = Modifier.width(TRACK_HEADER_WIDTH).padding(start = 10.dp), style = labelStyle,
             color = TextLo, maxLines = 1)
         Box(Modifier.width(1.dp).fillMaxHeight().background(Line))
-        Box(Modifier.weight(1f).fillMaxHeight().background(Ink).horizontalScroll(scrollState)) {
-            // One Canvas; only the visible window (plus a label of margin) is drawn, so long
-            // arrangements cost the same as short ones. Reading the scroll offset here only redraws.
-            Canvas(Modifier.width(contentDp).fillMaxHeight()) {
-                val totalSeconds = ceil(durationMs / 1000.0).toInt()
-                val first = ((scrollState.value - minLabelPx) / pxPerSec).toInt().coerceAtLeast(0)
-                val last = ((scrollState.value + viewportPx + minLabelPx) / pxPerSec).toInt().coerceAtMost(totalSeconds)
+        Box(Modifier.weight(1f).fillMaxHeight().background(Ink).timelineScroll(scrollArea)) {
+            // One viewport-sized Canvas; only the visible seconds (plus a label of margin) are drawn, at
+            // viewport-local x, so long arrangements cost the same as short ones. Scrolling only redraws.
+            Canvas(Modifier.fillMaxSize()) {
+                val scroll = scrollArea.scrollPx()
+                val seconds = visibleSecondsRange(scroll, viewportPx, minLabelPx, pxPerSec, ceil(durationMs / 1000.0).toLong())
+                val first = seconds.first
+                val last = seconds.last
                 var second = first - first % tickStep
                 while (second <= last) {
-                    val x = second * pxPerSec
+                    val x = (timelinePx(second * 1000.0, pxPerSec) - scroll).toFloat()
                     drawLine(LineSoft, Offset(x, size.height * 0.72f), Offset(x, size.height), 1.dp.toPx())
                     second += tickStep
                 }
                 second = first - first % labelStep
                 while (second <= last) {
-                    val x = second * pxPerSec
+                    val x = (timelinePx(second * 1000.0, pxPerSec) - scroll).toFloat()
                     drawLine(TextLo, Offset(x, size.height * 0.45f), Offset(x, size.height), 1.dp.toPx())
-                    // The last label can sit exactly at the content end; drawText would then receive a
+                    // A label at the viewport's right edge has no room; drawText would then receive a
                     // negative width and throw, so labels are only drawn into the room they have.
                     val left = x + 3.dp.toPx()
                     rulerLabelRoomPx(size.width, left)?.let { room ->
@@ -361,9 +405,12 @@ private fun EmptyTimeline(modifier: Modifier) {
 private fun TrackLane(
     track: Track,
     accent: Color,
-    contentDp: Dp,
     pxPerMs: Float,
-    scrollState: ScrollState,
+    pxPerSec: Float,
+    viewportPx: Float,
+    contentEndPx: Double,
+    window: ClosedFloatingPointRange<Double>,
+    scrollArea: TimelineScrollArea,
     selectedClip: Long?,
     enabled: Boolean,
     callbacks: MultitrackCallbacks,
@@ -388,24 +435,32 @@ private fun TrackLane(
             }
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(if (hasSelection) Accent else Line))
-        Box(Modifier.weight(1f).fillMaxHeight().background(Ink).horizontalScroll(scrollState)) {
-            Canvas(modifier = Modifier.width(contentDp).height(laneHeight)) {
-                val seconds = (size.width / (pxPerMs * 1000f)).toInt().coerceAtLeast(0)
-                for (second in 0..seconds) {
-                    val x = second * 1000f * pxPerMs
+        Box(Modifier.weight(1f).fillMaxHeight().background(Ink).timelineScroll(scrollArea)) {
+            val scrollPx = scrollArea.scrollPx
+            // Viewport-sized grid: one line per visible second, at viewport-local x.
+            Canvas(modifier = Modifier.fillMaxWidth().height(laneHeight)) {
+                val scroll = scrollPx()
+                for (second in visibleSecondsRange(scroll, size.width, 0f, pxPerSec, floor(contentEndPx / pxPerSec).toLong())) {
+                    val x = (timelinePx(second * 1000.0, pxPerSec) - scroll).toFloat()
                     drawLine(LineSoft, Offset(x, 0f), Offset(x, size.height), 1f)
                 }
                 drawLine(Line, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 1f)
             }
-            Box(modifier = Modifier.width(contentDp).height(laneHeight)) {
+            Box(modifier = Modifier.fillMaxWidth().height(laneHeight)) {
                 if (track.clips.isEmpty()) {
                     Text("Empty track · tap + to add a clip", color = TextLo, maxLines = 1,
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
+                        modifier = Modifier.align(Alignment.CenterStart)
+                            .offset { IntOffset(-scrollPx().coerceAtMost(2.0 * viewportPx).roundToInt(), 0) }
+                            .padding(start = 10.dp),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp))
                 }
+                // Only clips intersecting the composed window exist, each laid out only for its part inside it.
                 track.clips.forEach { clip ->
-                    ClipBox(
+                    val span = clipBoxSpan(clip.startMs, clip.lengthMs, pxPerSec, window) ?: return@forEach
+                    key(clip.id) { ClipBox(
                         clip = clip,
+                        span = span,
+                        scrollPx = scrollPx,
                         pxPerMs = pxPerMs,
                         accent = accent,
                         muted = track.muted,
@@ -415,7 +470,7 @@ private fun TrackLane(
                         onTrimIn = { callbacks.onTrimIn(track.id, clip.id, it) },
                         onTrimOut = { callbacks.onTrimOut(track.id, clip.id, it) },
                         laneHeight = laneHeight,
-                    )
+                    ) }
                 }
             }
         }
@@ -613,6 +668,8 @@ private fun MultitrackOptionsDialog(draftStatus: String, onDismiss: () -> Unit, 
 @Composable
 private fun ClipBox(
     clip: Clip,
+    span: ClipBoxSpan,
+    scrollPx: () -> Double,
     pxPerMs: Float,
     accent: Color,
     muted: Boolean,
@@ -629,16 +686,20 @@ private fun ClipBox(
     val trimInCallback = rememberUpdatedState(onTrimIn)
     val trimOutCallback = rememberUpdatedState(onTrimOut)
     val selectCallback = rememberUpdatedState(onSelect)
+    val currentSpan = rememberUpdatedState(span)
     var mode by remember { mutableStateOf(0) }
 
-    val xPx = (clip.startMs * pxPerMs).roundToInt()
-    val widthDp = with(density) { (clip.lengthMs * pxPerMs).coerceAtLeast(24f).toDp() }
+    val widthDp = with(density) { span.widthPx.toDp() }
     val topColor = if (muted) Color(0xFF44525D) else accent
     val bottomColor = if (muted) Color(0xFF2D3942) else accent.copy(alpha = 0.55f)
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(xPx, 0) }
+            // The box is up to 4 viewports wide but its lane is one viewport wide: measure it free of the
+            // lane's width constraint (which would silently shrink it), start-aligned, then place it
+            // viewport-locally. The offset is read at layout time, so scrolling re-places without recomposing.
+            .wrapContentWidth(Alignment.Start, unbounded = true)
+            .offset { IntOffset((span.leftPx - scrollPx()).roundToInt(), 0) }
             .width(widthDp)
             .height(laneHeight)
             .padding(vertical = 5.dp)
@@ -650,11 +711,8 @@ private fun ClipBox(
                 detectHorizontalDragGestures(
                     onDragStart = { position ->
                         selectCallback.value()
-                        mode = when {
-                            position.x < edge -> 1
-                            position.x > size.width - edge -> 2
-                            else -> 0
-                        }
+                        // Trim edges are the clip's real edges, also when only part of it is laid out.
+                        mode = clipDragMode(position.x, currentSpan.value, edge)
                     },
                 ) { change, dragX ->
                     change.consume()
@@ -671,7 +729,17 @@ private fun ClipBox(
             },
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRoundRect(color = PanelHi, cornerRadius = androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()))
+            // Clip-local x (0..fullWidth) -> box-local x. Edges beyond the box are clamped just outside it,
+            // so a very long clip never produces huge draw coordinates; the box clips them anyway.
+            val hidden = span.hiddenLeftPx
+            val pad = 64f
+            fun local(x: Double): Float = (x - hidden).toFloat()
+            val bodyLeft = local(0.0).coerceAtLeast(-pad)
+            val bodyRight = local(span.fullWidthPx).coerceAtMost(size.width + pad)
+            val bodyTopLeft = Offset(bodyLeft, 0f)
+            val bodySize = Size(bodyRight - bodyLeft, size.height)
+            drawRoundRect(color = PanelHi, topLeft = bodyTopLeft, size = bodySize,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()))
             val waveform = clip.waveform
             val count = waveform.bucketCount
             val duration = clip.source.durationMs
@@ -680,14 +748,18 @@ private fun ClipBox(
                 val endIndex = ((clip.sourceOutMs.toFloat() / duration) * count).toInt().coerceIn(startIndex, count)
                 val visible = (endIndex - startIndex).coerceAtLeast(1)
                 val midY = size.height / 2f
-                val step = size.width / visible
+                val step = span.fullWidthPx / visible
+                // Only buckets inside the box (plus a margin) are drawn.
+                val buckets = visibleBucketRange(hidden, size.width, span.fullWidthPx, visible, pad)
+                val firstIndex = buckets.first
+                val lastIndex = buckets.last
                 val path = Path().apply {
-                    moveTo(0f, midY)
-                    for (index in 0 until visible) {
-                        lineTo(index * step, midY - waveform.maxs[startIndex + index] * midY)
+                    moveTo(local(firstIndex * step), midY)
+                    for (index in firstIndex..lastIndex) {
+                        lineTo(local(index * step), midY - waveform.maxs[(startIndex + index).coerceAtMost(count - 1)] * midY)
                     }
-                    for (index in visible - 1 downTo 0) {
-                        lineTo(index * step, midY - waveform.mins[startIndex + index] * midY)
+                    for (index in lastIndex downTo firstIndex) {
+                        lineTo(local(index * step), midY - waveform.mins[(startIndex + index).coerceAtMost(count - 1)] * midY)
                     }
                     close()
                 }
@@ -696,28 +768,27 @@ private fun ClipBox(
             val border = if (selected) Accent else accent.copy(alpha = 0.55f)
             drawRoundRect(
                 color = border,
+                topLeft = bodyTopLeft,
+                size = bodySize,
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(9.dp.toPx()),
                 style = Stroke(width = if (selected) 4f else 2f),
             )
             if (selected) {
                 val handleWidth = 12.dp.toPx()
-                drawRoundRect(
-                    color = Accent,
-                    topLeft = Offset(0f, 0f),
-                    size = Size(handleWidth, size.height),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
-                )
-                drawRoundRect(
-                    color = Accent,
-                    topLeft = Offset(size.width - handleWidth, 0f),
-                    size = Size(handleWidth, size.height),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
-                )
                 val grip = Color.White.copy(alpha = 0.72f)
                 val centerY = size.height / 2f
-                for (offset in listOf(-6f, 0f, 6f)) {
-                    drawCircle(grip, radius = 1.6.dp.toPx(), center = Offset(handleWidth / 2f, centerY + offset))
-                    drawCircle(grip, radius = 1.6.dp.toPx(), center = Offset(size.width - handleWidth / 2f, centerY + offset))
+                // Handles sit at the clip's real edges; an edge outside the box is simply not drawn.
+                for (handleLeft in listOf(local(0.0), local(span.fullWidthPx) - handleWidth)) {
+                    if (handleLeft + handleWidth < 0f || handleLeft > size.width) continue
+                    drawRoundRect(
+                        color = Accent,
+                        topLeft = Offset(handleLeft, 0f),
+                        size = Size(handleWidth, size.height),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                    )
+                    for (offset in listOf(-6f, 0f, 6f)) {
+                        drawCircle(grip, radius = 1.6.dp.toPx(), center = Offset(handleLeft + handleWidth / 2f, centerY + offset))
+                    }
                 }
             }
         }

@@ -137,6 +137,13 @@ internal fun clipBoxSpan(startMs: Long, lengthMs: Long, pxPerSec: Float, window:
 }
 
 /**
+ * Whether the clip's name label is drawn. The label is anchored at the clip's real start; when that start lies
+ * left of the laid-out box (more than one viewport off-screen), anchoring it to the box instead would show a
+ * stray fragment of the name at the lane's left edge, so it is not drawn.
+ */
+internal fun clipLabelVisible(span: ClipBoxSpan): Boolean = span.hiddenLeftPx == 0.0
+
+/**
  * Drag mode for a touch at [boxX] inside the laid-out box: 1 = trim in, 2 = trim out, 0 = move. Edges are
  * the clip's real edges, so a long clip cut at the window edge is moved, not trimmed, when touched there.
  */

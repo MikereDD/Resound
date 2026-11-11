@@ -188,6 +188,22 @@ private fun LongFixture(totalMs: Long, pxPerSec: Float) {
 @Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong3h240() = LongFixture(3 * 3_600_000L, 240f)
 @Preview(widthDp = 448, heightDp = 921) @Composable fun MultitrackPreviewLong12h240() = LongFixture(12 * 3_600_000L, 240f)
 
+/**
+ * Clip-label regression (Phase 5 follow-up): a 12 h clip with a long name, viewed from the middle at 320 dp / 200 %.
+ * Its real start is hours off-screen, so no part of its label may appear at the lane's left edge.
+ */
+@Preview(widthDp = 320, heightDp = 568, fontScale = 2f)
+@Composable fun MultitrackPreviewLongLabelCut() {
+    val total = 12 * 3_600_000L
+    Fixture(MultitrackUiState(
+        tracks = listOf(
+            Track(1, "Bed", listOf(clip(201, "Placeholder bed with a long descriptive name", total, 0, 2f, available = false))),
+            Track(2, "Short", listOf(clip(202, "Hit", 30_000L, total / 2, 3f))),
+        ),
+        selectedClip = 201, pxPerSec = 240f, status = FIXTURE_STATUS, draftStatus = DRAFT,
+    ), initialLeftMs = (total / 2 - 1_000L).toDouble())
+}
+
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavEditor() = NavOnly(ResoundDestination.Editor)
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavMultitrack() = NavOnly(ResoundDestination.Multitrack)
 @Preview(widthDp = 412, heightDp = 850) @Composable fun MultitrackPreviewNavLibrary() = NavOnly(ResoundDestination.Library)

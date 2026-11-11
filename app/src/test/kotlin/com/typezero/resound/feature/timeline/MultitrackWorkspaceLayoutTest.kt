@@ -123,6 +123,7 @@ class MultitrackWorkspaceLayoutTest {
         assertEquals(2, Regex("""\.timelineScroll\(scrollArea\)""").findAll(ws).count())
         // Width-limit guard: no duration-scaled layout width or full-width scroll child may come back.
         assertFalse("no horizontalScroll child", ws.contains("horizontalScroll("))
+        assertTrue("clip label guarded by its real start", clip.contains("if (clipLabelVisible(span)) Text("))
         assertFalse("no full-content width", Regex("""contentDp|\.width\([^)]*(duration|lengthMs|pxPerMs)""").containsMatchIn(ws))
         assertTrue(ws.contains(".scrollable(area.state, Orientation.Horizontal, reverseDirection = true)"))
         assertTrue(ws.contains("LocalLayoutDirection provides LayoutDirection.Ltr"))

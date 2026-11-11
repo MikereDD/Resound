@@ -122,6 +122,23 @@ class TimelineViewportTest {
         assertEquals(24, span.widthPx)
     }
 
+    @Test fun clipLabelOnlyWhenTheRealStartIsLaidOut() {
+        val viewport = 187f // 320 dp lane at 1x
+        val total = 12 * hour
+        // 12 h clip seen from the middle: its real start is hours off-screen -> no label fragment at the left edge.
+        val mid = timelinePx(total / 2 - 1_000.0, 240f)
+        val window = timelineWindowPx(timelineWindowIndex(mid, viewport), viewport)
+        val bed = clipBoxSpan(0L, total, 240f, window)!!
+        assertTrue(bed.hiddenLeftPx > 0.0)
+        assertFalse(clipLabelVisible(bed))
+        // A clip starting inside the window keeps its label (unchanged behaviour), also at the arrangement start.
+        assertTrue(clipLabelVisible(clipBoxSpan(total / 2, 30_000L, 240f, window)!!))
+        assertTrue(clipLabelVisible(clipBoxSpan(0L, total, 240f, timelineWindowPx(0L, viewport))!!))
+        // Trim/move geometry is independent of the label rule.
+        assertEquals(timelinePx(total.toDouble(), 240f), bed.fullWidthPx, 0.0)
+        assertEquals(0, clipDragMode(0f, bed, 30f))
+    }
+
     @Test fun dragEdgesAreTheClipsRealEdges() {
         val cut = ClipBoxSpan(leftPx = 5_000.0, widthPx = 1_356, hiddenLeftPx = 5_000.0, fullWidthPx = 20_000.0)
         assertEquals("touching the cut left side of a long clip moves it", 0, clipDragMode(0f, cut, 30f))

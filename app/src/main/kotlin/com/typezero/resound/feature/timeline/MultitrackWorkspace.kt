@@ -792,7 +792,7 @@ private fun ClipBox(
                 }
             }
         }
-        Text(
+        if (clipLabelVisible(span)) Text(
             if (clip.sourceAvailable) clip.source.displayName else "Unavailable: ${clip.source.displayName}",
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
             style = MaterialTheme.typography.labelSmall,

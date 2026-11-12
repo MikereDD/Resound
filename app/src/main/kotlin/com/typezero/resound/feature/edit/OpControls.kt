@@ -11,10 +11,15 @@ package com.typezero.resound.feature.edit
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,7 +29,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import com.typezero.resound.ui.theme.Panel
+import com.typezero.resound.ui.components.ResoundChoiceChip
+import com.typezero.resound.ui.theme.TextHi
+import com.typezero.resound.ui.theme.TextMid
 import kotlin.math.roundToInt
 
 enum class EditOp(
@@ -98,18 +109,11 @@ private fun SliderDialog(
     onConfirm: (Float) -> Unit,
 ) {
     var v by remember(op) { mutableFloatStateOf(default) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                Text(format(v))
-                Slider(value = v, onValueChange = { v = it }, valueRange = min..max)
-            }
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(v) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    OperationDialog(title, onDismiss, onConfirm = { onConfirm(v) }) {
+        Text(format(v), style = MaterialTheme.typography.bodyMedium)
+        Slider(value = v, onValueChange = { v = it }, valueRange = min..max,
+            modifier = Modifier.heightIn(min = 48.dp))
+    }
 }
 
 @Composable
@@ -118,22 +122,18 @@ private fun EqDialog(onDismiss: () -> Unit, onConfirm: (OpParams) -> Unit) {
     var freqT by remember { mutableFloatStateOf(0.5f) }
     var gain by remember { mutableFloatStateOf(0f) }
     val freq = (60.0 * Math.pow(200.0, freqT.toDouble())).roundToInt()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Equalizer band") },
-        text = {
-            Column {
-                Text("Frequency: $freq Hz")
-                Slider(value = freqT, onValueChange = { freqT = it })
-                Text("Gain: ${gain.roundToInt()} dB")
-                Slider(value = gain, onValueChange = { gain = it }, valueRange = -12f..12f)
-            }
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(OpParams.Eq(freq, gain.toDouble())) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    OperationDialog("Equalizer band", onDismiss,
+        onConfirm = { onConfirm(OpParams.Eq(freq, gain.toDouble())) }) {
+        Text("Frequency: $freq Hz", style = MaterialTheme.typography.bodyMedium)
+        Slider(value = freqT, onValueChange = { freqT = it },
+            modifier = Modifier.heightIn(min = 48.dp))
+        Text("Gain: ${gain.roundToInt()} dB", style = MaterialTheme.typography.bodyMedium)
+        Slider(value = gain, onValueChange = { gain = it }, valueRange = -12f..12f,
+            modifier = Modifier.heightIn(min = 48.dp))
+    }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChoiceDialog(
     title: String,
@@ -144,26 +144,53 @@ private fun ChoiceDialog(
     onConfirm: (String) -> Unit,
 ) {
     var sel by remember { mutableStateOf(default) }
+    OperationDialog(title, onDismiss, onConfirm = { onConfirm(sel) }) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { opt ->
+                ResoundChoiceChip(opt, selected = opt == sel, onClick = { sel = opt })
+            }
+        }
+        preview(sel)
+    }
+}
+
+@Composable
+private fun OperationDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val maxContentHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.55f)
+        .coerceAtLeast(96.dp)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        shape = RoundedCornerShape(12.dp),
+        containerColor = Panel,
+        titleContentColor = TextHi,
+        textContentColor = TextMid,
+        tonalElevation = 0.dp,
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                options.chunked(3).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { opt ->
-                            if (opt == sel) {
-                                Button(onClick = { sel = opt }) { Text(opt) }
-                            } else {
-                                OutlinedButton(onClick = { sel = opt }) { Text(opt) }
-                            }
-                        }
-                    }
-                }
-                preview(sel)
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = maxContentHeight)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) { content() }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Apply")
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(sel) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Cancel")
+            }
+        },
     )
 }

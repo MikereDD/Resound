@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0-dev.12 — Hardened development updates
+
+- Advance the development build to versionCode 25. This is the first development release offered to 0.8.0-dev.11 through the in-app updater.
+- Make update downloads cancellable: when the updater is left, the download is abandoned at once and disconnected, it stops writing at its next read, and its staging directory is deleted. Each download is staged in its own directory and deleted on failure or cancellation; a stale download can no longer delete, overwrite or reuse another download's verified files.
+- Reject manifest bytes that are not valid UTF-8 instead of replacing them, and report malformed update URLs as invalid.
+- Document the redirect trust policy for release downloads.
+- Bind manifest APK and signature URLs to the exact Resound GitHub repository, release tag and asset name; preserve trusted HTTPS download redirects.
+- Parse manifests once with shared strict syntax and numeric types across JVM and Android. Reject decoded duplicate keys, trailing content, lenient syntax, non-ASCII numeric/escape digits and unpaired surrogates; retain schema-2 validation and bound nesting and numeric ranges.
+- Add focused host tests for strict parsing, release URL binding, UTF-8, cancellation and per-download staging, including loopback-socket tests of the real download loop.
+
+## 0.8.0-dev.11 — Standards-compliant development updates
+
+- Advance the development build to versionCode 24.
+- Add a development update channel: release-signed `-dev` builds check `releases/development/release-manifest.json`; stable builds keep `releases/update.json`. DEV TEST builds never check for updates.
+- Adopt the Typezer∅ release manifest (schema revision 2) with strict parsing, updater protocol 1, numeric version ordering, channel and `minimumVersion` checks.
+- Verify a detached RSA-SHA256 release signature against the pinned Resound release key, plus exact file names, sizes and SHA-256 checksums, before handing an update to Android's installer.
+- Fix update downloads from GitHub Releases: follow up to five redirects, each only to an explicitly trusted HTTPS host (adds `release-assets.githubusercontent.com`).
+- Require the downloaded APK to be `com.typezero.resound`, to carry the announced version with a newer version code, and to be signed only with the Resound release certificate.
+- Remove staged update downloads after a failed download, when the update dialog closes and at startup.
+- Add focused host tests for manifests, version ordering, channels, trusted redirects, tamper rejection and update identity.
+
 ## 0.8.0-dev.10 — Close audio, compact Editor and filename options
 
 - Advance the development build to versionCode 23.

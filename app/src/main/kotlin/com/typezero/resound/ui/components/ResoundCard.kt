@@ -20,7 +20,7 @@ fun ResoundCard(
         shape = androidx.compose.material3.MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = Panel),
         border = BorderStroke(1.dp, Line),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         content = content,
     )
 }

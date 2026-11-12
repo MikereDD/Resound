@@ -12,13 +12,25 @@ android {
         applicationId = "com.typezero.resound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.8.0-dev.10"
+        versionCode = 25
+        versionName = "0.8.0-dev.12"
 
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
             "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/update.json\"",
+        )
+        // Development channel for release-signed "-dev" builds (stable URL above is unchanged).
+        buildConfigField(
+            "String",
+            "UPDATE_DEV_MANIFEST_URL",
+            "\"https://raw.githubusercontent.com/MikereDD/Resound/main/releases/development/release-manifest.json\"",
+        )
+        // Public SHA-256 of the Resound release signing certificate; updates must carry exactly it.
+        buildConfigField(
+            "String",
+            "UPDATE_RELEASE_CERT_SHA256",
+            "\"3aaba0c794a652511c65272f7cf9210432a23069f5a27bd2d700c06891bed499\"",
         )
 
         // Public output folder under Music/ and test-variant switch (overridden by devtest).
@@ -84,6 +96,8 @@ dependencies {
 
     // Host-side unit tests (JUnit 4.13.2, already in the local Gradle cache).
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for host tests of the update-manifest parser (Android provides it at runtime).
+    testImplementation("org.json:json:20250517")
 
     // ── FFmpeg engine ───────────────────────────────────────────────────────
     // ffmpeg-kit was retired by arthenica and pulled from Maven Central. This is

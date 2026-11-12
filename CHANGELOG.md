@@ -27,9 +27,9 @@
 - Library: dense rows (format, name, duration, size and date). A row reopens the
   file in the Editor; sharing stays a separate action. Permission, loading, error
   and empty states are compact panels, with an Allow access button.
-- Settings: compact rows. The channel shown next to the version is derived from
-  the installed version: development builds show DEVELOPMENT, stable versions
-  STABLE.
+- Settings: compact rows. Development builds show a DEVELOPMENT badge next to
+  the version; stable builds, and versions that cannot be read, show the
+  version alone.
 - The About dialog's links use the new Steel Blue control colour; the Update and
   About dialogs are otherwise unchanged.
 

@@ -17,6 +17,7 @@ import com.typezero.resound.core.io.PublicationNaming
 /**
  * Contextual, opt-in controls: opening this panel is never required to record/export. The pattern
  * is the existing [PublicationNaming] syntax; checkboxes only add or remove its tokens.
+ * [inDialog] uses the parent's dialog container and opens the compact form immediately.
  */
 @Composable
 fun NamingPanel(
@@ -28,21 +29,29 @@ fun NamingPanel(
     trimRange: Pair<Long, Long>? = null,
     frozen: NamingRequest? = null,
     trimOption: Boolean = false,
+    inDialog: Boolean = false,
     onChange: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember(inDialog) { mutableStateOf(inDialog) }
     var optionsExpanded by remember { mutableStateOf(false) }
     val options = FilenameOption.entries.filter { it != FilenameOption.TRIM || (trimOption && !recording) }
-    ResoundCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { expanded = !expanded }) {
-                Text("$title · ${if (pattern.isEmpty()) "Automatic" else "Custom"} ${if (expanded) "−" else "+"}")
+    val content: @Composable (Modifier) -> Unit = { contentModifier ->
+        Column(contentModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!inDialog) {
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text("$title · ${if (pattern.isEmpty()) "Automatic" else "Custom"} ${if (expanded) "−" else "+"}")
+                }
             }
             if (expanded) {
                 OutlinedTextField(value = pattern, onValueChange = onChange, enabled = enabled,
-                    label = { Text("Filename (leave empty for automatic)") },
+                    label = { Text(if (inDialog) "Filename" else "Filename (leave empty for automatic)") },
+                    textStyle = if (inDialog) MaterialTheme.typography.bodyMedium else LocalTextStyle.current,
                     singleLine = true, modifier = Modifier.fillMaxWidth())
-                TextButton(onClick = { optionsExpanded = !optionsExpanded }) {
+                if (inDialog) {
+                    Text("Leave empty for automatic naming.", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = { optionsExpanded = !optionsExpanded },
+                    modifier = if (inDialog) Modifier.heightIn(min = 48.dp) else Modifier) {
                     Text("Filename options ${if (optionsExpanded) "−" else "+"}")
                 }
                 if (optionsExpanded) {
@@ -54,11 +63,14 @@ fun NamingPanel(
                                     onValueChange = { onChange(FilenameOptions.toggle(pattern, option, it)) })) {
                             Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
                             Spacer(Modifier.width(8.dp))
-                            Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(option.label,
+                                style = if (inDialog) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                                modifier = if (inDialog) Modifier.weight(1f) else Modifier)
                         }
                     }
                 }
-                NamingPreview(pattern, ext, trimRange, frozen, trimAvailable = trimOption && !recording)
+                NamingPreviewContent(pattern, ext, trimRange, frozen,
+                    trimAvailable = trimOption && !recording, compact = inDialog)
                 if (pattern.contains("\$FORMAT")) {
                     Text("The format is added automatically as the file extension (.$ext); a format at the end of the name is not repeated.",
                         style = MaterialTheme.typography.bodyMedium)
@@ -66,8 +78,18 @@ fun NamingPanel(
                 if (recording && frozen == null && pattern.isNotEmpty()) {
                     Text("Applies to the next recording.", style = MaterialTheme.typography.bodyMedium)
                 }
-                TextButton(onClick = { onChange("") }, enabled = enabled && pattern.isNotEmpty()) { Text("Use automatic naming") }
+                TextButton(onClick = { onChange("") }, enabled = enabled && pattern.isNotEmpty(),
+                    modifier = if (inDialog) Modifier.heightIn(min = 48.dp) else Modifier) {
+                    Text("Use automatic naming")
+                }
             }
+        }
+    }
+    if (inDialog) {
+        content(Modifier.fillMaxWidth())
+    } else {
+        ResoundCard(modifier = Modifier.fillMaxWidth()) {
+            content(Modifier.padding(12.dp))
         }
     }
 }
@@ -80,6 +102,18 @@ fun NamingPreview(
     trimRange: Pair<Long, Long>? = null,
     frozen: NamingRequest? = null,
     trimAvailable: Boolean = false, // only Editor Trim exports can fill $TRIM
+) {
+    NamingPreviewContent(pattern, ext, trimRange, frozen, trimAvailable, compact = false)
+}
+
+@Composable
+private fun NamingPreviewContent(
+    pattern: String,
+    ext: String,
+    trimRange: Pair<Long, Long>?,
+    frozen: NamingRequest?,
+    trimAvailable: Boolean,
+    compact: Boolean,
 ) {
     val example = frozen ?: remember(pattern, ext) { NamingRequest(pattern) }
     val usesDuration = FilenameOptions.isSelected(pattern, FilenameOption.DURATION)
@@ -100,14 +134,15 @@ fun NamingPreview(
             pattern.isEmpty() -> "Preview: automatic name with date, time and a short code (.$ext)"
             result.name != null -> "Preview: ${result.name}"
             else -> "Automatic name will be used: ${result.notice?.removePrefix("Automatic name used: ")}"
-        }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        }, style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium)
         if (result.name != null && samples.isNotEmpty()) {
             Text("Example ${samples.joinToString(", ")}; actual values are filled in when saved.",
-                style = MaterialTheme.typography.bodyMedium)
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
         }
         if (result.name != null && trimAvailable && usesTrim) {
             Text("Trim range is added only to Trim exports; other exports use automatic naming.",
-                style = MaterialTheme.typography.bodyMedium)
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
         }
     }
 }

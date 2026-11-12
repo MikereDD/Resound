@@ -106,19 +106,24 @@ Loaded audio can be published and set as the Android system ringtone.
 
 ### Secure updater
 
-Resound includes a user-initiated sideload updater designed around signed GitHub
-Release assets. Before Android is allowed to install an update, Resound verifies:
+Resound includes a user-initiated sideload updater that follows the
+[Typezer∅ Release Standards](https://github.com/MikereDD/Typezero-Release-Standards)
+(release manifest schema revision 2). Before Android is allowed to install an
+update, Resound verifies:
 
-- HTTPS-only release URLs
-- SHA-256 of the downloaded APK
-- expected Android package name
-- signing certificate match with the currently installed Resound build
+- HTTPS-only URLs on trusted GitHub hosts, including every redirect
+- the release manifest: app, platform, architecture, channel, updater protocol
+  and a version that is newer under Typezer∅ numeric version ordering
+- exact APK and signature file names, sizes and SHA-256 checksums
+- a detached release signature made with the pinned Resound release key
+- the Android package name, the announced version, a newer version code and the
+  pinned Resound APK signing certificate, matching the installed build
 
 There are no silent updates and no automatic downgrades.
 
 ## Project status
 
-**Current development source:** `0.8.0-dev.10` (`versionCode 23`)
+**Current development source:** `0.8.0-dev.12` (`versionCode 25`)
 
 The 0.8 line is in development. Development builds are published as GitHub
 **pre-releases**; they are tested on a real device, but not every workflow is
@@ -131,7 +136,9 @@ Signed APKs are published **only through GitHub Releases**:
 **https://github.com/MikereDD/Resound/releases**
 
 APK binaries are intentionally not stored in the Git repository. Each release
-APK and its SHA-256 checksum are attached to the matching GitHub Release.
+APK is attached to the matching GitHub Release together with its SHA-256
+checksum, detached release signature, release manifest, release notes and
+validation record.
 
 Resound currently targets **arm64-v8a** devices and is intended for sideloading:
 download the APK from the release page and allow your browser or file manager
@@ -199,10 +206,15 @@ FFmpeg and the wrapper remain under their own applicable licenses. See
 
 ## Release and update model
 
-The in-app updater reads `releases/update.json` from the `main` branch. That
-file is added with the first stable release; until then, Check for updates
-shows an update-check error. Development pre-releases are installed manually
-and are not offered through the updater.
+The in-app updater has two channels, both read from the `main` branch:
+
+- **Development** (`releases/development/release-manifest.json`):
+  release-signed development builds (`-dev` versions), starting with
+  0.8.0-dev.11.
+- **Stable** (`releases/update.json`): stable releases. This file is added with
+  the first stable release.
+
+DEV TEST builds never check for updates.
 
 Release APKs do **not** live in the repository. A release manifest points to the
 signed APK attached to the matching GitHub Release, for example:
@@ -211,8 +223,8 @@ signed APK attached to the matching GitHub Release, for example:
 https://github.com/MikereDD/Resound/releases/download/v0.8.0/Resound-v0.8.0.apk
 ```
 
-See [`releases/update.example.json`](releases/update.example.json) for the
-manifest structure and [`docs/RELEASING.md`](docs/RELEASING.md) for the complete
+See [`releases/release-manifest.example.json`](releases/release-manifest.example.json)
+for the manifest structure and [`docs/RELEASING.md`](docs/RELEASING.md) for the complete
 release workflow.
 
 ## Repository history

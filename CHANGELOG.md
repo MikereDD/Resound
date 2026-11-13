@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.8.0-dev.13 — Workstation interface
+
+- Advance the development build to versionCode 26.
+- No changes to the updater, signing, update channels or the audio engine. Recording,
+  recovery, processing and export logic is unchanged; only its presentation moved
+  into the new layouts.
+
+### Interface
+
+- New OLED-black workstation theme: true-black backgrounds, near-black panels with
+  thin borders, and Steel Blue (`#769DB8`) for interactive controls and selection.
+  Cyan stays the colour of audio data: the waveform and the first track.
+  Informational icons are neutral grey; disabled controls are visibly dimmed.
+- Shared bottom navigation for Editor, Multitrack, Library and Settings. The
+  selected destination shows an outlined pill; labels that do not fit at large
+  text sizes wrap onto two lines instead of shrinking.
+- Editor: waveform-first layout. A compact header for the loaded file with a
+  visible Close audio action, a waveform that fills the remaining space, compact
+  transport, an adaptive tool grid and slimmer naming, output and export panels.
+  Recovery information is kept.
+- Multitrack: timeline-first layout. The ruler sits at the top and stacked lanes
+  fill the screen with a narrow track column. Clip gestures are horizontal only,
+  so vertical swipes scroll the lanes. The Add Track / zoom / Export Mix toolbar
+  does not reflow while zooming.
+- Library: dense rows (format, name, duration, size and date). A row reopens the
+  file in the Editor; sharing stays a separate action. Permission, loading, error
+  and empty states are compact panels, with an Allow access button.
+- Settings: compact rows. Development builds show a DEVELOPMENT badge next to
+  the version; stable builds, and versions that cannot be read, show the
+  version alone.
+- The About dialog's links use the new Steel Blue control colour; the Update and
+  About dialogs are otherwise unchanged.
+
+### Fixes
+
+- Multitrack no longer crashes on long arrangements at high zoom (for example
+  20 minutes at 240 px/s). The timeline now lays out only the visible part of the
+  arrangement, so arrangements of many hours scroll and zoom normally across the
+  whole 6–240 px/s range. Zooming keeps the moment at the left edge in place, and
+  the scroll position is clamped when an arrangement gets shorter.
+- A clip whose start is scrolled far off-screen no longer shows a stray fragment
+  of its name at the left edge of the lane.
+- The mute button of a muted track now looks disabled while lanes are disabled
+  (while an operation is running or recovery is shown) instead of staying
+  highlighted.
+- Library: the system-bar insets are no longer applied twice.
+
+### Not yet available in Multitrack
+
+These are planned and not part of this build; the interface shows no controls for
+them:
+
+- playback and a moving playhead
+- Solo
+- Split, Duplicate and Delete for clips
+- undo / redo
+- deleting tracks
+
+### Known limitations
+
+- The timeline no longer shows Android's stretch effect at its scroll edges.
+- Accessibility scroll actions move the timeline in one step instead of animating.
+- At extreme zoom, a very long clip's waveform can look coarse.
+
 ## 0.8.0-dev.12 — Hardened development updates
 
 - Advance the development build to versionCode 25. This is the first development release offered to 0.8.0-dev.11 through the in-app updater.

@@ -40,16 +40,18 @@ The app is intentionally **local-first**:
 - audio processing stays on the device
 - releases are distributed as signed APKs through GitHub Releases
 
-## Premium studio interface
+## Workstation interface
 
-Resound's 0.8 development line rebuilt the application around a dark studio
-interface with its signal-teal waveform identity, clearer transport controls,
-real tool hierarchy, and a consistent Editor / Multitrack / Library / Settings
-shell.
+Since 0.8.0-dev.13, Resound uses an OLED-black workstation interface: true-black
+backgrounds, near-black panels, Steel Blue interactive controls and a cyan
+waveform. Editor, Multitrack, Library and Settings share one bottom navigation,
+the Editor is waveform-first and Multitrack is timeline-first.
 
 <p align="center">
-  <img src="docs/design/Resound-premium-mockup.png" width="920" alt="Resound premium interface design" />
+  <img src="docs/design/Resound-premium-mockup.png" width="920" alt="Earlier Resound 0.8 design concept (not a screenshot of the current interface)" />
 </p>
+
+<p align="center"><sub>Earlier 0.8 design concept; the current interface differs.</sub></p>
 
 ## Features
 
@@ -88,9 +90,14 @@ shared `Music/Resound` collection.
 - drag clips along the timeline
 - visible clip-edge trim handles
 - start / duration / end readout for selected clips
-- synchronized horizontal scroll and zoom
+- synchronized horizontal scroll and zoom (6–240 px/s), including arrangements
+  many hours long
 - per-track mute controls
 - FFmpeg mixdown export
+
+Not yet available in Multitrack: playback and a moving playhead, Solo, Split,
+Duplicate, Delete, undo / redo and track deletion. The interface does not show
+controls for them; listen to an arrangement by exporting the mix.
 
 ### Library
 
@@ -123,7 +130,7 @@ There are no silent updates and no automatic downgrades.
 
 ## Project status
 
-**Current development source:** `0.8.0-dev.12` (`versionCode 25`)
+**Current development source:** `0.8.0-dev.13` (`versionCode 26`)
 
 The 0.8 line is in development. Development builds are published as GitHub
 **pre-releases**; they are tested on a real device, but not every workflow is

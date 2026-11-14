@@ -46,6 +46,16 @@
   (while an operation is running or recovery is shown) instead of staying
   highlighted.
 - Library: the system-bar insets are no longer applied twice.
+- Multitrack: Export Mix now reports its result where you are. On long or
+  many-track arrangements the toolbar sits far below the status line, so a
+  blocked or finished mix could look like no response. Every outcome (nothing to
+  mix, blocked by an unavailable audio file, saved, failed) now also appears in a
+  message bar at the bottom of the Multitrack screen, at any scroll position. The
+  bar uses the dark workstation colours without an extra outline, has a dismiss
+  button and stays for about ten seconds. Only the newest result is shown: a new
+  outcome replaces the current or any pending one, so an older result never
+  appears after a newer one. Mixing itself is unchanged: muted tracks are left
+  out, and an unmuted track with an unavailable audio file still blocks the mix.
 
 ### Not yet available in Multitrack
 
@@ -63,6 +73,8 @@ them:
 - The timeline no longer shows Android's stretch effect at its scroll edges.
 - Accessibility scroll actions move the timeline in one step instead of animating.
 - At extreme zoom, a very long clip's waveform can look coarse.
+- When the page is scrolled to the very end, the Export Mix message bar briefly
+  covers the bottom toolbar row until it times out or is dismissed.
 
 ## 0.8.0-dev.12 — Hardened development updates
 

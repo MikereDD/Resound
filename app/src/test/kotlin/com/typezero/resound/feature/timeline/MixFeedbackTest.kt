@@ -1,7 +1,8 @@
 /*
  * file:    MixFeedbackTest.kt
  * author:  Typezer∅
- * desc:    U1 regression guard: every Export Mix outcome reaches the viewport-visible snackbar, the mix rules
+ * desc:    U1 regression guard: every Export Mix outcome reaches the viewport-visible snackbar (latest-only
+ *          behaviour is exercised in LatestOnlySnackbarTest), the mix rules
  *          (muted tracks excluded, unmuted unavailable references blocked) are unchanged, and the snackbar keeps
  *          the workstation palette (no extra border: Material 3 pads the snackbar inside its modifier, so a
  *          modifier border draws a detached frame), a dismiss action and a readable duration.
@@ -40,18 +41,18 @@ class MixFeedbackTest {
         assertTrue(body.contains("Effects.mixTimeline(inputs, temp.absolutePath)"))
     }
 
-    @Test fun announcementReplacesTheCurrentOneAndStaysReadable() {
+    @Test fun outcomesGoThroughTheLatestOnlyAnnouncer() {
         val s = screen()
+        assertTrue(s.contains("val mixFeedback = remember(scope) { LatestOnlySnackbar(scope) }"))
         val announce = s.substringAfter("fun announceMixOutcome(").substringBefore("\n    }\n")
         assertTrue(announce.contains("status = message"))
-        assertTrue(announce.contains("mixFeedback.currentSnackbarData?.dismiss()"))
-        assertTrue(announce.contains("withDismissAction = true"))
-        assertTrue(announce.contains("duration = SnackbarDuration.Long"))
+        assertTrue(announce.contains("mixFeedback.announce(message)"))
+        assertFalse("no direct showSnackbar call bypasses latest-only", s.contains("showSnackbar("))
     }
 
     @Test fun snackbarIsHostedOverTheWorkspaceInTheWorkstationPalette() {
         val s = screen()
-        assertTrue(s.contains("SnackbarHost(mixFeedback, Modifier.align(Alignment.BottomCenter)"))
+        assertTrue(s.contains("SnackbarHost(mixFeedback.hostState, Modifier.align(Alignment.BottomCenter)"))
         val bar = s.substringAfter("private fun MixFeedbackSnackbar(")
         listOf("containerColor = PanelHi", "contentColor = TextHi", "actionColor = Accent", "dismissActionContentColor = Accent")
             .forEach { assertTrue("snackbar uses $it", bar.contains(it)) }

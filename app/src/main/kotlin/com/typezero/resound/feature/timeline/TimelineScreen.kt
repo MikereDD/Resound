@@ -10,6 +10,13 @@ package com.typezero.resound.feature.timeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -18,8 +25,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.typezero.resound.core.audio.AudioFiles
 import com.typezero.resound.core.audio.WaveformExtractor
 import com.typezero.resound.core.ffmpeg.FFmpegRunner
@@ -27,6 +36,9 @@ import com.typezero.resound.core.io.Outputs
 import com.typezero.resound.core.io.NamingPreferences
 import com.typezero.resound.core.io.NamingRequest
 import com.typezero.resound.ui.components.NamingPanel
+import com.typezero.resound.ui.theme.Accent
+import com.typezero.resound.ui.theme.PanelHi
+import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.feature.effects.Effects
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -57,6 +69,14 @@ fun TimelineScreen(
     var addTrackId by remember { mutableStateOf<Long?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Add a track, then place audio clips on the timeline.") }
+    // Export Mix outcomes are also announced at the bottom of the viewport: the toolbar can sit far below the
+    // header status line on long or many-track arrangements (U1). Latest-only: a new outcome cancels the visible
+    // or queued previous one.
+    val mixFeedback = remember(scope) { LatestOnlySnackbar(scope) }
+    fun announceMixOutcome(message: String) {
+        status = message
+        mixFeedback.announce(message)
+    }
     var pxPerSec by session::pxPerSec
 
     val editingEnabled = session.recoveryReady && !busy
@@ -118,11 +138,11 @@ fun TimelineScreen(
                     if (track.muted) emptyList() else track.clips.map { track to it }
                 }
                 if (active.isEmpty()) {
-                    status = "Add a clip to an unmuted track first."
+                    announceMixOutcome("Add a clip to an unmuted track first.")
                     return@launch
                 }
                 if (active.any { !it.second.sourceAvailable }) {
-                    status = "Mix blocked: an audio reference is unavailable. Automatic draft retained."
+                    announceMixOutcome("Mix blocked: an audio reference is unavailable. Automatic draft retained.")
                     return@launch
                 }
                 val inputs = active.map { (track, clip) ->
@@ -136,16 +156,16 @@ fun TimelineScreen(
                 }
                 val temp = allocateOwnedTemp(context, "mix", "m4a", owned)
                 val result = ffmpeg.run(Effects.mixTimeline(inputs, temp.absolutePath), 0L, owned)
-                status = if (result.isSuccess) {
+                announceMixOutcome(if (result.isSuccess) {
                     val published = runCommitted { Outputs.publishNamedToMusic(context, temp, "mix", "m4a", exportNaming) }
                     "Mix saved to ${published.savedDescription}"
                 } else {
                     "Mix failed (rc=${result.returnCode})"
-                }
+                })
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (t: Throwable) {
-                status = "Mix failed: ${t.message}"
+                announceMixOutcome("Mix failed: ${t.message}")
             } finally {
                 owned.deleteAll()
                 busy = false
@@ -153,6 +173,7 @@ fun TimelineScreen(
         }
     }
 
+    Box(modifier) {
     MultitrackWorkspace(
         state = MultitrackUiState(
             tracks = tracks,
@@ -193,7 +214,7 @@ fun TimelineScreen(
                 }
             },
         ),
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         horizontalScroll = horizontalScroll,
         exportNaming = {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -203,5 +224,22 @@ fun TimelineScreen(
             }
         },
         diagnostics = { TimelineDiagnostics(session) },
+    )
+    SnackbarHost(mixFeedback.hostState, Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 8.dp)) { data ->
+        MixFeedbackSnackbar(data)
+    }
+    }
+}
+
+/** Export Mix outcome in the workstation palette (no light Material inverse surface). */
+@Composable
+private fun MixFeedbackSnackbar(data: SnackbarData) {
+    Snackbar(
+        snackbarData = data,
+        shape = RoundedCornerShape(10.dp),
+        containerColor = PanelHi,
+        contentColor = TextHi,
+        actionColor = Accent,
+        dismissActionContentColor = Accent,
     )
 }

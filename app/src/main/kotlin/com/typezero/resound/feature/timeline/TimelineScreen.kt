@@ -10,8 +10,6 @@ package com.typezero.resound.feature.timeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -41,7 +39,6 @@ import com.typezero.resound.core.io.NamingPreferences
 import com.typezero.resound.core.io.NamingRequest
 import com.typezero.resound.ui.components.NamingPanel
 import com.typezero.resound.ui.theme.Accent
-import com.typezero.resound.ui.theme.Line
 import com.typezero.resound.ui.theme.PanelHi
 import com.typezero.resound.ui.theme.TextHi
 import com.typezero.resound.feature.effects.Effects
@@ -248,6 +245,5 @@ private fun MixFeedbackSnackbar(data: SnackbarData) {
         contentColor = TextHi,
         actionColor = Accent,
         dismissActionContentColor = Accent,
-        modifier = Modifier.border(BorderStroke(1.dp, Line), RoundedCornerShape(10.dp)),
     )
 }

@@ -3,7 +3,8 @@
  * author:  Typezer∅
  * desc:    U1 regression guard: every Export Mix outcome reaches the viewport-visible snackbar, the mix rules
  *          (muted tracks excluded, unmuted unavailable references blocked) are unchanged, and the snackbar keeps
- *          the workstation palette, a dismiss action and a readable duration.
+ *          the workstation palette (no extra border: Material 3 pads the snackbar inside its modifier, so a
+ *          modifier border draws a detached frame), a dismiss action and a readable duration.
  */
 package com.typezero.resound.feature.timeline
 
@@ -52,7 +53,8 @@ class MixFeedbackTest {
         val s = screen()
         assertTrue(s.contains("SnackbarHost(mixFeedback, Modifier.align(Alignment.BottomCenter)"))
         val bar = s.substringAfter("private fun MixFeedbackSnackbar(")
-        listOf("containerColor = PanelHi", "contentColor = TextHi", "actionColor = Accent", "BorderStroke(1.dp, Line)")
+        listOf("containerColor = PanelHi", "contentColor = TextHi", "actionColor = Accent", "dismissActionContentColor = Accent")
             .forEach { assertTrue("snackbar uses $it", bar.contains(it)) }
+        assertFalse("no modifier border (it frames the padded box, not the surface)", bar.contains("border("))
     }
 }

@@ -16,9 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,14 +70,12 @@ fun TimelineScreen(
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Add a track, then place audio clips on the timeline.") }
     // Export Mix outcomes are also announced at the bottom of the viewport: the toolbar can sit far below the
-    // header status line on long or many-track arrangements (U1). A new outcome replaces the previous one.
-    val mixFeedback = remember { SnackbarHostState() }
+    // header status line on long or many-track arrangements (U1). Latest-only: a new outcome cancels the visible
+    // or queued previous one.
+    val mixFeedback = remember(scope) { LatestOnlySnackbar(scope) }
     fun announceMixOutcome(message: String) {
         status = message
-        scope.launch {
-            mixFeedback.currentSnackbarData?.dismiss()
-            mixFeedback.showSnackbar(message, withDismissAction = true, duration = SnackbarDuration.Long)
-        }
+        mixFeedback.announce(message)
     }
     var pxPerSec by session::pxPerSec
 
@@ -229,7 +225,7 @@ fun TimelineScreen(
         },
         diagnostics = { TimelineDiagnostics(session) },
     )
-    SnackbarHost(mixFeedback, Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 8.dp)) { data ->
+    SnackbarHost(mixFeedback.hostState, Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 8.dp)) { data ->
         MixFeedbackSnackbar(data)
     }
     }
